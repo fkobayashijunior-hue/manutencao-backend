@@ -1,39 +1,36 @@
 const pool = require('./database');
+const fs = require('fs');
+const path = require('path');
 
 async function initDatabase() {
   console.log('🔧 Inicializando banco de dados...');
   
   try {
-    // Criar tabela principal para armazenar todos os dados do sistema
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS system_data (
-        id SERIAL PRIMARY KEY,
-        data_key VARCHAR(100) UNIQUE NOT NULL,
-        data_value JSONB NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+    // Verificar se as tabelas já existem
+    const checkTables = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('users', 'sectors', 'assets', 'requests', 'agulhas')
     `);
     
-    console.log('✅ Tabela system_data criada com sucesso!');
-    
-    // Criar índice para melhorar performance nas consultas
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_data_key ON system_data(data_key);
-    `);
-    
-    console.log('✅ Índice criado com sucesso!');
-    
-    // Verificar se já existem dados
-    const result = await pool.query(
-      'SELECT COUNT(*) as count FROM system_data WHERE data_key = $1',
-      ['allData']
-    );
-    
-    if (parseInt(result.rows[0].count) === 0) {
-      console.log('ℹ️  Nenhum dado encontrado. Banco está pronto para receber dados.');
-    } else {
-      console.log('✅ Dados existentes encontrados no banco!');
+    if (checkTables.rows.length > 0) {
+      console.log('✅ Tabelas já existem no banco de dados!');
+      console.log(`📊 Tabelas encontradas: ${checkTables.rows.map(r => r.table_name).join(', ')}`);
+      return;
     }
+    
+    console.log('📝 Criando estrutura do banco de dados...');
+    
+    // Ler e executar o schema SQL
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    
+    await pool.query(schema);
+    
+    console.log('✅ Schema criado com sucesso!');
+    console.log('✅ Dados iniciais inseridos!');
+    console.log('✅ Banco de dados pronto para uso!');
     
   } catch (error) {
     console.error('❌ Erro ao inicializar banco de dados:', error);

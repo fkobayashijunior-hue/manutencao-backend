@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 10000;
 
 // Middlewares
 app.use(cors({
-  origin: '*', // Permitir todas as origens (ajuste em produção se necessário)
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -32,312 +32,482 @@ initDatabase().catch(err => {
 // Rota raiz - Status da API
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'API Sistema de Manutenção v2.0',
+    message: 'API Aza Connect v3.0 - PostgreSQL',
     status: 'online',
     database: 'PostgreSQL',
     timestamp: new Date().toISOString()
   });
 });
 
-// GET - Carregar todos os dados
-app.get('/api/data', async (req, res) => {
+// ==================== USERS ====================
+
+// GET - Listar todos os usuários
+app.get('/api/users', async (req, res) => {
   try {
-    console.log('📥 Carregando todos os dados...');
-    
+    const result = await pool.query('SELECT * FROM users ORDER BY id');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar usuários:', error);
+    res.status(500).json({ error: 'Erro ao listar usuários', message: error.message });
+  }
+});
+
+// POST - Criar novo usuário
+app.post('/api/users', async (req, res) => {
+  try {
+    const { name, username, password, role, sector, birthdate } = req.body;
     const result = await pool.query(
-      'SELECT data_value FROM system_data WHERE data_key = $1',
-      ['allData']
+      'INSERT INTO users (name, username, password, role, sector, birthdate) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [name, username, password, role, sector, birthdate]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário', message: error.message });
+  }
+});
+
+// PUT - Atualizar usuário
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, username, password, role, sector, birthdate } = req.body;
+    const result = await pool.query(
+      'UPDATE users SET name = $1, username = $2, password = $3, role = $4, sector = $5, birthdate = $6 WHERE id = $7 RETURNING *',
+      [name, username, password, role, sector, birthdate, id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar usuário:', error);
+    res.status(500).json({ error: 'Erro ao atualizar usuário', message: error.message });
+  }
+});
+
+// DELETE - Deletar usuário
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ message: 'Usuário deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar usuário:', error);
+    res.status(500).json({ error: 'Erro ao deletar usuário', message: error.message });
+  }
+});
+
+// POST - Login
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const result = await pool.query(
+      'SELECT * FROM users WHERE username = $1 AND password = $2',
+      [username, password]
     );
     
     if (result.rows.length > 0) {
-      console.log('✅ Dados carregados do banco de dados');
-      res.json(result.rows[0].data_value);
+      res.json({ success: true, user: result.rows[0] });
     } else {
-      console.log('ℹ️  Nenhum dado encontrado, retornando estrutura vazia');
-      // Retornar estrutura vazia se não houver dados
-      const emptyData = {
-        users: [],
-        assets: [],
-        sectors: [],
-        requests: [],
-        agulhas: [],
-        pdfs: [],
-        partRequests: [],
-        notifications: [],
-        permissions: {
-          'Gestor do Sistema': ['all'],
-          'Encarregado': ['newRequest', 'myRequests', 'sectorHistory', 'sectorPDFs', 'uploadPDF'],
-          'Mecânico': ['requests', 'partRequests', 'agulhas', 'maintenance'],
-          'Tecelão': ['newRequest', 'myRequests', 'agulhas', 'sectorPDFs']
-        }
-      };
-      res.json(emptyData);
+      res.status(401).json({ success: false, message: 'Credenciais inválidas' });
     }
   } catch (error) {
-    console.error('❌ Erro ao carregar dados:', error);
-    res.status(500).json({ 
-      error: 'Erro ao carregar dados',
-      message: error.message 
-    });
+    console.error('❌ Erro ao fazer login:', error);
+    res.status(500).json({ error: 'Erro ao fazer login', message: error.message });
   }
 });
 
-// POST - Salvar todos os dados
-app.post('/api/data', async (req, res) => {
+// ==================== SECTORS ====================
+
+// GET - Listar todos os setores
+app.get('/api/sectors', async (req, res) => {
   try {
-    const allData = req.body;
-    
-    console.log('💾 Salvando todos os dados...');
-    console.log(`📊 Usuários: ${allData.users?.length || 0}, Equipamentos: ${allData.assets?.length || 0}, Solicitações: ${allData.requests?.length || 0}`);
-    
-    await pool.query(
-      `INSERT INTO system_data (data_key, data_value, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (data_key)
-       DO UPDATE SET data_value = $2, updated_at = CURRENT_TIMESTAMP`,
-      ['allData', JSON.stringify(allData)]
-    );
-    
-    console.log('✅ Dados salvos com sucesso no PostgreSQL!');
-    res.json({ 
-      success: true, 
-      message: 'Dados salvos com sucesso!',
-      timestamp: new Date().toISOString()
-    });
+    const result = await pool.query('SELECT * FROM sectors ORDER BY id');
+    res.json(result.rows);
   } catch (error) {
-    console.error('❌ Erro ao salvar dados:', error);
-    res.status(500).json({ 
-      error: 'Erro ao salvar dados',
-      message: error.message
-    });
+    console.error('❌ Erro ao listar setores:', error);
+    res.status(500).json({ error: 'Erro ao listar setores', message: error.message });
   }
 });
 
-// POST - Salvar usuário individual
-app.post('/api/users', async (req, res) => {
+// POST - Criar novo setor
+app.post('/api/sectors', async (req, res) => {
   try {
-    const user = req.body;
-    console.log(`👤 Salvando usuário: ${user.name} (ID: ${user.id})`);
-    
-    // Carregar dados atuais
+    const { nome, descricao, ativo } = req.body;
     const result = await pool.query(
-      'SELECT data_value FROM system_data WHERE data_key = $1',
-      ['allData']
+      'INSERT INTO sectors (nome, descricao, ativo) VALUES ($1, $2, $3) RETURNING *',
+      [nome, descricao, ativo !== undefined ? ativo : true]
     );
-    
-    let allData = result.rows.length > 0 ? result.rows[0].data_value : { 
-      users: [], 
-      assets: [], 
-      sectors: [], 
-      requests: [], 
-      agulhas: [],
-      pdfs: [],
-      partRequests: [],
-      notifications: [],
-      permissions: {}
-    };
-    
-    // Garantir que users existe
-    if (!allData.users) allData.users = [];
-    
-    // Adicionar ou atualizar usuário
-    const userIndex = allData.users.findIndex(u => u.id === user.id);
-    if (userIndex >= 0) {
-      allData.users[userIndex] = user;
-      console.log(`✏️  Usuário atualizado`);
-    } else {
-      allData.users.push(user);
-      console.log(`➕ Novo usuário adicionado`);
-    }
-    
-    // Salvar de volta
-    await pool.query(
-      `INSERT INTO system_data (data_key, data_value, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (data_key)
-       DO UPDATE SET data_value = $2, updated_at = CURRENT_TIMESTAMP`,
-      ['allData', JSON.stringify(allData)]
-    );
-    
-    console.log('✅ Usuário salvo com sucesso!');
-    res.json({ success: true, message: 'Usuário salvo com sucesso!' });
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('❌ Erro ao salvar usuário:', error);
-    res.status(500).json({ 
-      error: 'Erro ao salvar usuário',
-      message: error.message
-    });
+    console.error('❌ Erro ao criar setor:', error);
+    res.status(500).json({ error: 'Erro ao criar setor', message: error.message });
   }
 });
 
-// POST - Salvar equipamento individual
+// PUT - Atualizar setor
+app.put('/api/sectors/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, descricao, ativo } = req.body;
+    const result = await pool.query(
+      'UPDATE sectors SET nome = $1, descricao = $2, ativo = $3 WHERE id = $4 RETURNING *',
+      [nome, descricao, ativo, id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar setor:', error);
+    res.status(500).json({ error: 'Erro ao atualizar setor', message: error.message });
+  }
+});
+
+// DELETE - Deletar setor
+app.delete('/api/sectors/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM sectors WHERE id = $1', [id]);
+    res.json({ message: 'Setor deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar setor:', error);
+    res.status(500).json({ error: 'Erro ao deletar setor', message: error.message });
+  }
+});
+
+// ==================== ASSETS ====================
+
+// GET - Listar todos os equipamentos
+app.get('/api/assets', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM assets ORDER BY id');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar equipamentos:', error);
+    res.status(500).json({ error: 'Erro ao listar equipamentos', message: error.message });
+  }
+});
+
+// POST - Criar novo equipamento
 app.post('/api/assets', async (req, res) => {
   try {
-    const asset = req.body;
-    console.log(`🔧 Salvando equipamento: ${asset.name} (ID: ${asset.id})`);
-    
+    const { name, type, number, model, serial_number, sector, status } = req.body;
     const result = await pool.query(
-      'SELECT data_value FROM system_data WHERE data_key = $1',
-      ['allData']
+      'INSERT INTO assets (name, type, number, model, serial_number, sector, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [name, type, number, model, serial_number, sector, status || 'Ativo']
     );
-    
-    let allData = result.rows.length > 0 ? result.rows[0].data_value : { 
-      users: [], 
-      assets: [], 
-      sectors: [], 
-      requests: [], 
-      agulhas: [],
-      pdfs: [],
-      partRequests: [],
-      notifications: [],
-      permissions: {}
-    };
-    
-    if (!allData.assets) allData.assets = [];
-    
-    const assetIndex = allData.assets.findIndex(a => a.id === asset.id);
-    if (assetIndex >= 0) {
-      allData.assets[assetIndex] = asset;
-      console.log(`✏️  Equipamento atualizado`);
-    } else {
-      allData.assets.push(asset);
-      console.log(`➕ Novo equipamento adicionado`);
-    }
-    
-    await pool.query(
-      `INSERT INTO system_data (data_key, data_value, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (data_key)
-       DO UPDATE SET data_value = $2, updated_at = CURRENT_TIMESTAMP`,
-      ['allData', JSON.stringify(allData)]
-    );
-    
-    console.log('✅ Equipamento salvo com sucesso!');
-    res.json({ success: true, message: 'Equipamento salvo com sucesso!' });
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('❌ Erro ao salvar equipamento:', error);
-    res.status(500).json({ 
-      error: 'Erro ao salvar equipamento',
-      message: error.message
-    });
+    console.error('❌ Erro ao criar equipamento:', error);
+    res.status(500).json({ error: 'Erro ao criar equipamento', message: error.message });
   }
 });
 
-// POST - Salvar solicitação individual
+// PUT - Atualizar equipamento
+app.put('/api/assets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, type, number, model, serial_number, sector, status } = req.body;
+    const result = await pool.query(
+      'UPDATE assets SET name = $1, type = $2, number = $3, model = $4, serial_number = $5, sector = $6, status = $7 WHERE id = $8 RETURNING *',
+      [name, type, number, model, serial_number, sector, status, id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar equipamento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar equipamento', message: error.message });
+  }
+});
+
+// DELETE - Deletar equipamento
+app.delete('/api/assets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM assets WHERE id = $1', [id]);
+    res.json({ message: 'Equipamento deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar equipamento:', error);
+    res.status(500).json({ error: 'Erro ao deletar equipamento', message: error.message });
+  }
+});
+
+// ==================== REQUESTS ====================
+
+// GET - Listar todas as solicitações
+app.get('/api/requests', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM requests ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar solicitações:', error);
+    res.status(500).json({ error: 'Erro ao listar solicitações', message: error.message });
+  }
+});
+
+// POST - Criar nova solicitação
 app.post('/api/requests', async (req, res) => {
   try {
-    const request = req.body;
-    console.log(`📋 Salvando solicitação: ID ${request.id}`);
-    
+    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
     const result = await pool.query(
-      'SELECT data_value FROM system_data WHERE data_key = $1',
-      ['allData']
+      'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [equipment, sector, description, urgency, status || 'Pendente', requested_by, assigned_to, service_executed, preventive_maintenance]
     );
-    
-    let allData = result.rows.length > 0 ? result.rows[0].data_value : { 
-      users: [], 
-      assets: [], 
-      sectors: [], 
-      requests: [], 
-      agulhas: [],
-      pdfs: [],
-      partRequests: [],
-      notifications: [],
-      permissions: {}
-    };
-    
-    if (!allData.requests) allData.requests = [];
-    
-    const requestIndex = allData.requests.findIndex(r => r.id === request.id);
-    if (requestIndex >= 0) {
-      allData.requests[requestIndex] = request;
-      console.log(`✏️  Solicitação atualizada`);
-    } else {
-      allData.requests.push(request);
-      console.log(`➕ Nova solicitação adicionada`);
-    }
-    
-    await pool.query(
-      `INSERT INTO system_data (data_key, data_value, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (data_key)
-       DO UPDATE SET data_value = $2, updated_at = CURRENT_TIMESTAMP`,
-      ['allData', JSON.stringify(allData)]
-    );
-    
-    console.log('✅ Solicitação salva com sucesso!');
-    res.json({ success: true, message: 'Solicitação salva com sucesso!' });
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('❌ Erro ao salvar solicitação:', error);
-    res.status(500).json({ 
-      error: 'Erro ao salvar solicitação',
-      message: error.message
-    });
+    console.error('❌ Erro ao criar solicitação:', error);
+    res.status(500).json({ error: 'Erro ao criar solicitação', message: error.message });
   }
 });
 
-// Rota de health check
-app.get('/health', async (req, res) => {
+// PUT - Atualizar solicitação
+app.put('/api/requests/:id', async (req, res) => {
   try {
-    // Testar conexão com banco
-    await pool.query('SELECT 1');
+    const { id } = req.params;
+    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
+    const result = await pool.query(
+      'UPDATE requests SET equipment = $1, sector = $2, description = $3, urgency = $4, status = $5, requested_by = $6, assigned_to = $7, service_executed = $8, preventive_maintenance = $9 WHERE id = $10 RETURNING *',
+      [equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar solicitação:', error);
+    res.status(500).json({ error: 'Erro ao atualizar solicitação', message: error.message });
+  }
+});
+
+// DELETE - Deletar solicitação
+app.delete('/api/requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM requests WHERE id = $1', [id]);
+    res.json({ message: 'Solicitação deletada com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar solicitação:', error);
+    res.status(500).json({ error: 'Erro ao deletar solicitação', message: error.message });
+  }
+});
+
+// ==================== AGULHAS ====================
+
+// GET - Listar todos os registros de agulhas
+app.get('/api/agulhas', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM agulhas ORDER BY date DESC, created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar agulhas:', error);
+    res.status(500).json({ error: 'Erro ao listar agulhas', message: error.message });
+  }
+});
+
+// POST - Criar novo registro de agulha
+app.post('/api/agulhas', async (req, res) => {
+  try {
+    const { tear, size, quantity, employee, date } = req.body;
+    const result = await pool.query(
+      'INSERT INTO agulhas (tear, size, quantity, employee, date) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [tear, size, quantity || 1, employee, date]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar registro de agulha:', error);
+    res.status(500).json({ error: 'Erro ao criar registro de agulha', message: error.message });
+  }
+});
+
+// DELETE - Deletar registro de agulha
+app.delete('/api/agulhas/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM agulhas WHERE id = $1', [id]);
+    res.json({ message: 'Registro de agulha deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar registro de agulha:', error);
+    res.status(500).json({ error: 'Erro ao deletar registro de agulha', message: error.message });
+  }
+});
+
+// ==================== PDFS ====================
+
+// GET - Listar todos os PDFs
+app.get('/api/pdfs', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM pdfs ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar PDFs:', error);
+    res.status(500).json({ error: 'Erro ao listar PDFs', message: error.message });
+  }
+});
+
+// POST - Criar novo PDF
+app.post('/api/pdfs', async (req, res) => {
+  try {
+    const { title, sector, file_url, file_name, uploaded_by } = req.body;
+    const result = await pool.query(
+      'INSERT INTO pdfs (title, sector, file_url, file_name, uploaded_by) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [title, sector, file_url, file_name, uploaded_by]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar PDF:', error);
+    res.status(500).json({ error: 'Erro ao criar PDF', message: error.message });
+  }
+});
+
+// DELETE - Deletar PDF
+app.delete('/api/pdfs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM pdfs WHERE id = $1', [id]);
+    res.json({ message: 'PDF deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar PDF:', error);
+    res.status(500).json({ error: 'Erro ao deletar PDF', message: error.message });
+  }
+});
+
+// ==================== PARTS REQUESTS ====================
+
+// GET - Listar todas as solicitações de peças
+app.get('/api/parts-requests', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM parts_requests ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar solicitações de peças:', error);
+    res.status(500).json({ error: 'Erro ao listar solicitações de peças', message: error.message });
+  }
+});
+
+// POST - Criar nova solicitação de peça
+app.post('/api/parts-requests', async (req, res) => {
+  try {
+    const { part_name, quantity, equipment, sector, requested_by, status, notes } = req.body;
+    const result = await pool.query(
+      'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar solicitação de peça:', error);
+    res.status(500).json({ error: 'Erro ao criar solicitação de peça', message: error.message });
+  }
+});
+
+// PUT - Atualizar solicitação de peça
+app.put('/api/parts-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { part_name, quantity, equipment, sector, requested_by, status, notes } = req.body;
+    const result = await pool.query(
+      'UPDATE parts_requests SET part_name = $1, quantity = $2, equipment = $3, sector = $4, requested_by = $5, status = $6, notes = $7 WHERE id = $8 RETURNING *',
+      [part_name, quantity, equipment, sector, requested_by, status, notes, id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar solicitação de peça:', error);
+    res.status(500).json({ error: 'Erro ao atualizar solicitação de peça', message: error.message });
+  }
+});
+
+// DELETE - Deletar solicitação de peça
+app.delete('/api/parts-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM parts_requests WHERE id = $1', [id]);
+    res.json({ message: 'Solicitação de peça deletada com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar solicitação de peça:', error);
+    res.status(500).json({ error: 'Erro ao deletar solicitação de peça', message: error.message });
+  }
+});
+
+// ==================== PERMISSIONS ====================
+
+// GET - Listar todas as permissões
+app.get('/api/permissions', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM permissions ORDER BY role');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar permissões:', error);
+    res.status(500).json({ error: 'Erro ao listar permissões', message: error.message });
+  }
+});
+
+// ==================== NOTIFICATIONS ====================
+
+// GET - Listar notificações de um usuário
+app.get('/api/notifications/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao listar notificações:', error);
+    res.status(500).json({ error: 'Erro ao listar notificações', message: error.message });
+  }
+});
+
+// POST - Criar nova notificação
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { user_id, title, message, type } = req.body;
+    const result = await pool.query(
+      'INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4) RETURNING *',
+      [user_id, title, message, type || 'info']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar notificação:', error);
+    res.status(500).json({ error: 'Erro ao criar notificação', message: error.message });
+  }
+});
+
+// PUT - Marcar notificação como lida
+app.put('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'UPDATE notifications SET read = true WHERE id = $1 RETURNING *',
+      [id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao marcar notificação como lida:', error);
+    res.status(500).json({ error: 'Erro ao marcar notificação como lida', message: error.message });
+  }
+});
+
+// ==================== HEALTH CHECK ====================
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
     res.json({ 
-      status: 'healthy',
+      status: 'healthy', 
       database: 'connected',
-      timestamp: new Date().toISOString()
+      timestamp: result.rows[0].now 
     });
   } catch (error) {
     res.status(500).json({ 
-      status: 'unhealthy',
+      status: 'unhealthy', 
       database: 'disconnected',
-      error: error.message
+      error: error.message 
     });
   }
 });
 
-// Tratamento de rotas não encontradas
-app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Rota não encontrada',
-    path: req.path
-  });
-});
+// ==================== SERVIDOR ====================
 
-// Tratamento de erros global
-app.use((err, req, res, next) => {
-  console.error('❌ Erro não tratado:', err);
-  res.status(500).json({ 
-    error: 'Erro interno do servidor',
-    message: err.message
-  });
-});
-
-// Iniciar servidor
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('');
-  console.log('='.repeat(50));
-  console.log('🚀 Servidor iniciado com sucesso!');
-  console.log(`📡 Porta: ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`📡 API disponível em: http://localhost:${PORT}`);
   console.log(`🗄️  Banco de dados: PostgreSQL`);
-  console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log('='.repeat(50));
-  console.log('');
 });
 
-// Tratamento de sinais de encerramento
-process.on('SIGTERM', () => {
-  console.log('⚠️  SIGTERM recebido, encerrando servidor...');
-  pool.end(() => {
-    console.log('✅ Pool do PostgreSQL encerrado');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('⚠️  SIGINT recebido, encerrando servidor...');
-  pool.end(() => {
-    console.log('✅ Pool do PostgreSQL encerrado');
-    process.exit(0);
-  });
+// Tratamento de erros não capturados
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Erro não tratado:', err);
 });
 
