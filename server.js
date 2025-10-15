@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const pool = require('./database');
 const initDatabase = require('./init-database');
 
@@ -15,6 +18,44 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Servir arquivos estáticos da pasta uploads
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
+// Configuração do Multer para upload de arquivos
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
+    cb(null, name + '-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|pdf/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens (JPEG, JPG, PNG, GIF) e PDFs são permitidos!'));
+    }
+  }
+});
 
 // Log de requisições
 app.use((req, res, next) => {
@@ -476,6 +517,78 @@ app.put('/api/notifications/:id/read', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao marcar notificação como lida:', error);
     res.status(500).json({ error: 'Erro ao marcar notificação como lida', message: error.message });
+  }
+});
+
+// ==================== UPLOAD DE ARQUIVOS ====================
+
+// POST - Upload de arquivo único
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    
+    res.status(201).json({
+      success: true,
+      file: {
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        url: fileUrl
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao fazer upload:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload', message: error.message });
+  }
+});
+
+// POST - Upload de múltiplos arquivos
+app.post('/api/upload/multiple', upload.array('files', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const files = req.files.map(file => ({
+      filename: file.filename,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      url: `${baseUrl}/uploads/${file.filename}`
+    }));
+    
+    res.status(201).json({
+      success: true,
+      files: files,
+      count: files.length
+    });
+  } catch (error) {
+    console.error('❌ Erro ao fazer upload múltiplo:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload', message: error.message });
+  }
+});
+
+// DELETE - Deletar arquivo
+app.delete('/api/upload/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(uploadsDir, filename);
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      res.json({ success: true, message: 'Arquivo deletado com sucesso' });
+    } else {
+      res.status(404).json({ error: 'Arquivo não encontrado' });
+    }
+  } catch (error) {
+    console.error('❌ Erro ao deletar arquivo:', error);
+    res.status(500).json({ error: 'Erro ao deletar arquivo', message: error.message });
   }
 });
 
