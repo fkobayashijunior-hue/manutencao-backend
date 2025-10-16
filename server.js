@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('./database');
 const initDatabase = require('./init-database');
+const emailService = require('./emailService');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -289,6 +290,20 @@ app.post('/api/requests', async (req, res) => {
       'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
       [equipment, sector, description, urgency, status || 'Pendente', requested_by, assigned_to, service_executed, preventive_maintenance]
     );
+    
+    // Enviar e-mail para mecânicos
+    try {
+      const mechanics = await pool.query(
+        "SELECT * FROM users WHERE role IN ('Mecânico', 'Mecânico Encarregado') AND active = true"
+      );
+      if (mechanics.rows.length > 0) {
+        await emailService.sendNewRequestEmail(result.rows[0], mechanics.rows);
+      }
+    } catch (emailError) {
+      console.error('⚠️ Erro ao enviar e-mail:', emailError);
+      // Não bloqueia a criação da solicitação
+    }
+    
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação:', error);
@@ -305,6 +320,22 @@ app.put('/api/requests/:id', async (req, res) => {
       'UPDATE requests SET equipment = $1, sector = $2, description = $3, urgency = $4, status = $5, requested_by = $6, assigned_to = $7, service_executed = $8, preventive_maintenance = $9 WHERE id = $10 RETURNING *',
       [equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, id]
     );
+    
+    // Enviar e-mail se foi concluído
+    if (status === 'Concluído' && requested_by) {
+      try {
+        const user = await pool.query(
+          'SELECT * FROM users WHERE name = $1 OR id = $1',
+          [requested_by]
+        );
+        if (user.rows.length > 0) {
+          await emailService.sendCompletedRequestEmail(result.rows[0], user.rows[0]);
+        }
+      } catch (emailError) {
+        console.error('⚠️ Erro ao enviar e-mail:', emailError);
+      }
+    }
+    
     res.json(result.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar solicitação:', error);
@@ -425,6 +456,19 @@ app.post('/api/parts-requests', async (req, res) => {
       'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes]
     );
+    
+    // Enviar e-mail para gerentes
+    try {
+      const managers = await pool.query(
+        "SELECT * FROM users WHERE role = 'Gerente' AND active = true"
+      );
+      if (managers.rows.length > 0) {
+        await emailService.sendNewPartsRequestEmail(result.rows[0], managers.rows);
+      }
+    } catch (emailError) {
+      console.error('⚠️ Erro ao enviar e-mail:', emailError);
+    }
+    
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação de peça:', error);
