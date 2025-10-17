@@ -87,7 +87,12 @@ app.get('/', (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM users ORDER BY id');
-    res.json(result.rows);
+    // Formatar birthdate para YYYY-MM-DD (sem timezone)
+    const users = result.rows.map(user => ({
+      ...user,
+      birthdate: user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null
+    }));
+    res.json(users);
   } catch (error) {
     console.error('❌ Erro ao listar usuários:', error);
     res.status(500).json({ error: 'Erro ao listar usuários', message: error.message });
