@@ -480,11 +480,20 @@ app.post('/api/parts-requests', async (req, res) => {
 app.put('/api/parts-requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { part_name, quantity, equipment, sector, requested_by, status, notes } = req.body;
-    const result = await pool.query(
-      'UPDATE parts_requests SET part_name = $1, quantity = $2, equipment = $3, sector = $4, requested_by = $5, status = $6, notes = $7 WHERE id = $8 RETURNING *',
-      [part_name, quantity, equipment, sector, requested_by, status, notes, id]
-    );
+    const updates = req.body;
+    
+    // Construir query dinâmica apenas com campos enviados
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+    
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    const query = `UPDATE parts_requests SET ${setClause} WHERE id = $${fields.length + 1} RETURNING *`;
+    
+    const result = await pool.query(query, [...values, id]);
     res.json(result.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar solicitação de peça:', error);
