@@ -27,6 +27,8 @@ CREATE TABLE users (
   role VARCHAR(100) NOT NULL,
   sector VARCHAR(100),
   birthdate DATE,
+  email VARCHAR(255),
+  phone VARCHAR(20),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

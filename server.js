@@ -102,10 +102,10 @@ app.get('/api/users', async (req, res) => {
 // POST - Criar novo usuário
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, username, password, role, sector, birthdate } = req.body;
+    const { name, username, password, role, sector, birthdate, email, phone } = req.body;
     const result = await pool.query(
-      'INSERT INTO users (name, username, password, role, sector, birthdate) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [name, username, password, role, sector, birthdate]
+      'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [name, username, password, role, sector, birthdate, email || null, phone || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -118,10 +118,10 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, username, password, role, sector, birthdate } = req.body;
+    const { name, username, password, role, sector, birthdate, email, phone } = req.body;
     const result = await pool.query(
-      'UPDATE users SET name = $1, username = $2, password = $3, role = $4, sector = $5, birthdate = $6 WHERE id = $7 RETURNING *',
-      [name, username, password, role, sector, birthdate, id]
+      'UPDATE users SET name = $1, username = $2, password = $3, role = $4, sector = $5, birthdate = $6, email = $7, phone = $8 WHERE id = $9 RETURNING *',
+      [name, username, password, role, sector, birthdate, email || null, phone || null, id]
     );
     res.json(result.rows[0]);
   } catch (error) {
