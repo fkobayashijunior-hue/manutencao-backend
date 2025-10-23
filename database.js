@@ -1,26 +1,32 @@
-const { Pool } = require('pg');
+const mysql = require('mysql2/promise');
 
-// Conectar ao PostgreSQL usando a variável de ambiente DATABASE_URL
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false // Necessário para Render
-  } : false
+// Configuração de conexão MySQL
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'srv572.hstgr.io',
+  user: process.env.DB_USER || 'u629128033_azaconnect',
+  password: process.env.DB_PASSWORD || 'Aza@2025!',
+  database: process.env.DB_NAME || 'u629128033_azaconnect',
+  port: process.env.DB_PORT || 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
 });
 
 // Testar conexão
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Erro ao conectar ao banco de dados:', err.stack);
-  } else {
-    console.log('✅ Conectado ao PostgreSQL com sucesso!');
-    release();
-  }
-});
+pool.getConnection()
+  .then(connection => {
+    console.log('✅ Conectado ao MySQL com sucesso!');
+    connection.release();
+  })
+  .catch(err => {
+    console.error('❌ Erro ao conectar ao MySQL:', err.message);
+  });
 
 // Tratar erros de conexão
 pool.on('error', (err) => {
-  console.error('❌ Erro inesperado no PostgreSQL:', err);
+  console.error('❌ Erro inesperado no MySQL:', err);
 });
 
 module.exports = pool;

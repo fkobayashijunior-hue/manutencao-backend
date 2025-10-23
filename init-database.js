@@ -1,40 +1,29 @@
 const pool = require('./database');
-const fs = require('fs');
-const path = require('path');
 
 async function initDatabase() {
   console.log('🔧 Inicializando banco de dados...');
   
   try {
-    // Verificar se as tabelas já existem
-    const checkTables = await pool.query(`
+    // Verificar se as tabelas já existem (MySQL usa information_schema diferente)
+    const [checkTables] = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name IN ('users', 'sectors', 'assets', 'requests', 'agulhas')
+      WHERE table_schema = DATABASE()
+      AND table_name IN ('users', 'sectors', 'assets', 'requests', 'agulhas', 'pdfs', 'parts_requests', 'notifications', 'permissions')
     `);
     
-    if (checkTables.rows.length > 0) {
+    if (checkTables.length > 0) {
       console.log('✅ Tabelas já existem no banco de dados!');
-      console.log(`📊 Tabelas encontradas: ${checkTables.rows.map(r => r.table_name).join(', ')}`);
+      console.log(`📊 Tabelas encontradas: ${checkTables.map(r => r.table_name || r.TABLE_NAME).join(', ')}`);
       return;
     }
     
-    console.log('📝 Criando estrutura do banco de dados...');
-    
-    // Ler e executar o schema SQL
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf8');
-    
-    await pool.query(schema);
-    
-    console.log('✅ Schema criado com sucesso!');
-    console.log('✅ Dados iniciais inseridos!');
-    console.log('✅ Banco de dados pronto para uso!');
+    console.log('📝 Banco de dados está vazio. As tabelas devem ser criadas manualmente via phpMyAdmin ou SQL.');
+    console.log('⚠️  Por favor, execute o schema.sql no banco de dados MySQL.');
     
   } catch (error) {
-    console.error('❌ Erro ao inicializar banco de dados:', error);
-    throw error;
+    console.error('❌ Erro ao inicializar banco de dados:', error.message);
+    // Não lançar erro para não impedir o servidor de iniciar
   }
 }
 
