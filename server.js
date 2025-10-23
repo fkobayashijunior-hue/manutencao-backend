@@ -451,11 +451,11 @@ app.get('/api/parts-requests', async (req, res) => {
 // POST - Criar nova solicitação de peça
 app.post('/api/parts-requests', async (req, res) => {
   try {
-    const { part_name, quantity, equipment, sector, requested_by, status, notes } = req.body;
-    const result = await pool.query(
-      'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes]
-    );
+   const { part_name, quantity, equipment, sector, requested_by, status, notes, images } = req.body;
+const result = await pool.query(
+  'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes, images) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+  [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, images ? JSON.stringify(images) : null]
+);
     
     // Enviar e-mail para gerentes
     try {
