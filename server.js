@@ -453,33 +453,40 @@ app.post('/api/parts-requests', async (req, res) => {
   try {
    const { part_name, quantity, equipment, sector, requested_by, status, notes, images } = req.body;
 const result = await pool.query(
-  'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes, images) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-  [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, images ? JSON.stringify(images) : null]
-);
+ // POST - Criar nova solicitação de peça (VERSÃO MYSQL)
+app.post('/api/parts-requests', async (req, res) => {
+  try {
+    const { part_name, quantity, equipment, sector, requested_by, status, notes, images } = req.body;
+    
+    const [result] = await pool.query(
+      'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, images ? JSON.stringify(images) : null]
+    );
+    
+    // Buscar o registro inserido
+    const [inserted] = await pool.query(
+      'SELECT * FROM parts_requests WHERE id = ?',
+      [result.insertId]
+    );
     
     // Enviar e-mail para gerentes
     try {
-      const managers = await pool.query(
+      const [managers] = await pool.query(
         "SELECT * FROM users WHERE role = 'Gerente' AND active = true"
       );
-      if (managers.rows.length > 0) {
-        await emailService.sendNewPartsRequestEmail(result.rows[0], managers.rows);
+      if (managers.length > 0) {
+        await emailService.sendNewPartsRequestEmail(inserted[0], managers);
       }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail:', emailError);
     }
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação de peça:', error);
     res.status(500).json({ error: 'Erro ao criar solicitação de peça', message: error.message });
   }
 });
-
-// PUT - Atualizar solicitação de peça
-app.put('/api/parts-requests/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
     const updates = req.body;
     
     // Construir query dinâmica apenas com campos enviados
