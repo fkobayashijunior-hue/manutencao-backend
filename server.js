@@ -700,7 +700,7 @@ app.get('/api/health', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📡 API disponível em: http://localhost:${PORT}`);
-  console.log(`🗄️  Banco de dados: PostgreSQL`);
+  console.log(`🗄️  Banco de dados: MySQL`);
 });
 
 // Tratamento de erros não capturados
