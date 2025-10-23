@@ -74,9 +74,9 @@ initDatabase().catch(err => {
 // Rota raiz - Status da API
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'API Aza Connect v3.0 - PostgreSQL',
+    message: 'API Aza Connect v3.0 - MySQL',
     status: 'online',
-    database: 'PostgreSQL',
+    database: 'MySQL',
     timestamp: new Date().toISOString()
   });
 });
@@ -86,9 +86,9 @@ app.get('/', (req, res) => {
 // GET - Listar todos os usuários
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM users ORDER BY id');
+    const [result] = await pool.query('SELECT * FROM users ORDER BY id');
     // Formatar birthdate para YYYY-MM-DD (sem timezone)
-    const users = result.rows.map(user => ({
+    const users = result.map(user => ({
       ...user,
       birthdate: user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null
     }));
@@ -103,11 +103,13 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
   try {
     const { name, username, password, role, sector, birthdate, email, phone } = req.body;
-    const result = await pool.query(
-      'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [name, username, password, role, sector, birthdate, email || null, phone || null]
     );
-    res.status(201).json(result.rows[0]);
+    // Buscar registro inserido
+    const [inserted] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar usuário:', error);
     res.status(500).json({ error: 'Erro ao criar usuário', message: error.message });
@@ -119,11 +121,13 @@ app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, username, password, role, sector, birthdate, email, phone } = req.body;
-    const result = await pool.query(
-      'UPDATE users SET name = $1, username = $2, password = $3, role = $4, sector = $5, birthdate = $6, email = $7, phone = $8 WHERE id = $9 RETURNING *',
+    await pool.query(
+      'UPDATE users SET name = ?, username = ?, password = ?, role = ?, sector = ?, birthdate = ?, email = ?, phone = ? WHERE id = ?',
       [name, username, password, role, sector, birthdate, email || null, phone || null, id]
     );
-    res.json(result.rows[0]);
+    // Buscar registro atualizado
+    const [updated] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar usuário:', error);
     res.status(500).json({ error: 'Erro ao atualizar usuário', message: error.message });
@@ -134,7 +138,7 @@ app.put('/api/users/:id', async (req, res) => {
 app.delete('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await pool.query('DELETE FROM users WHERE id = ?', [id]);
     res.json({ message: 'Usuário deletado com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar usuário:', error);
@@ -147,12 +151,12 @@ app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1 AND password = $2',
+      'SELECT * FROM users WHERE username = ? AND password = ?',
       [username, password]
     );
     
-    if (result.rows.length > 0) {
-      res.json({ success: true, user: result.rows[0] });
+    if (result.length > 0) {
+      res.json({ success: true, user: result[0] });
     } else {
       res.status(401).json({ success: false, message: 'Credenciais inválidas' });
     }
@@ -167,8 +171,8 @@ app.post('/api/login', async (req, res) => {
 // GET - Listar todos os setores
 app.get('/api/sectors', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM sectors ORDER BY id');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM sectors ORDER BY id');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar setores:', error);
     res.status(500).json({ error: 'Erro ao listar setores', message: error.message });
@@ -179,11 +183,12 @@ app.get('/api/sectors', async (req, res) => {
 app.post('/api/sectors', async (req, res) => {
   try {
     const { nome, descricao, ativo } = req.body;
-    const result = await pool.query(
-      'INSERT INTO sectors (nome, descricao, ativo) VALUES ($1, $2, $3) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO sectors (nome, descricao, ativo) VALUES (?, ?, ?)',
       [nome, descricao, ativo !== undefined ? ativo : true]
     );
-    res.status(201).json(result.rows[0]);
+    const [inserted] = await pool.query('SELECT * FROM sectors WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar setor:', error);
     res.status(500).json({ error: 'Erro ao criar setor', message: error.message });
@@ -195,11 +200,12 @@ app.put('/api/sectors/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { nome, descricao, ativo } = req.body;
-    const result = await pool.query(
-      'UPDATE sectors SET nome = $1, descricao = $2, ativo = $3 WHERE id = $4 RETURNING *',
+    await pool.query(
+      'UPDATE sectors SET nome = ?, descricao = ?, ativo = ? WHERE id = ?',
       [nome, descricao, ativo, id]
     );
-    res.json(result.rows[0]);
+    const [updated] = await pool.query('SELECT * FROM sectors WHERE id = ?', [id]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar setor:', error);
     res.status(500).json({ error: 'Erro ao atualizar setor', message: error.message });
@@ -210,7 +216,7 @@ app.put('/api/sectors/:id', async (req, res) => {
 app.delete('/api/sectors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM sectors WHERE id = $1', [id]);
+    await pool.query('DELETE FROM sectors WHERE id = ?', [id]);
     res.json({ message: 'Setor deletado com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar setor:', error);
@@ -223,8 +229,8 @@ app.delete('/api/sectors/:id', async (req, res) => {
 // GET - Listar todos os equipamentos
 app.get('/api/assets', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM assets ORDER BY id');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM assets ORDER BY id');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar equipamentos:', error);
     res.status(500).json({ error: 'Erro ao listar equipamentos', message: error.message });
@@ -235,11 +241,12 @@ app.get('/api/assets', async (req, res) => {
 app.post('/api/assets', async (req, res) => {
   try {
     const { name, type, number, model, serial_number, sector, status } = req.body;
-    const result = await pool.query(
-      'INSERT INTO assets (name, type, number, model, serial_number, sector, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO assets (name, type, number, model, serial_number, sector, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [name, type, number, model, serial_number, sector, status || 'Ativo']
     );
-    res.status(201).json(result.rows[0]);
+    const [inserted] = await pool.query('SELECT * FROM assets WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar equipamento:', error);
     res.status(500).json({ error: 'Erro ao criar equipamento', message: error.message });
@@ -251,11 +258,12 @@ app.put('/api/assets/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, type, number, model, serial_number, sector, status } = req.body;
-    const result = await pool.query(
-      'UPDATE assets SET name = $1, type = $2, number = $3, model = $4, serial_number = $5, sector = $6, status = $7 WHERE id = $8 RETURNING *',
+    await pool.query(
+      'UPDATE assets SET name = ?, type = ?, number = ?, model = ?, serial_number = ?, sector = ?, status = ? WHERE id = ?',
       [name, type, number, model, serial_number, sector, status, id]
     );
-    res.json(result.rows[0]);
+    const [updated] = await pool.query('SELECT * FROM assets WHERE id = ?', [id]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar equipamento:', error);
     res.status(500).json({ error: 'Erro ao atualizar equipamento', message: error.message });
@@ -266,7 +274,7 @@ app.put('/api/assets/:id', async (req, res) => {
 app.delete('/api/assets/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM assets WHERE id = $1', [id]);
+    await pool.query('DELETE FROM assets WHERE id = ?', [id]);
     res.json({ message: 'Equipamento deletado com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar equipamento:', error);
@@ -279,8 +287,8 @@ app.delete('/api/assets/:id', async (req, res) => {
 // GET - Listar todas as solicitações
 app.get('/api/requests', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM requests ORDER BY created_at DESC');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM requests ORDER BY created_at DESC');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar solicitações:', error);
     res.status(500).json({ error: 'Erro ao listar solicitações', message: error.message });
@@ -291,25 +299,28 @@ app.get('/api/requests', async (req, res) => {
 app.post('/api/requests', async (req, res) => {
   try {
     const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
-    const result = await pool.query(
-      'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [equipment, sector, description, urgency, status || 'Pendente', requested_by, assigned_to, service_executed, preventive_maintenance]
     );
     
+    // Buscar registro inserido
+    const [inserted] = await pool.query('SELECT * FROM requests WHERE id = ?', [result.insertId]);
+    
     // Enviar e-mail para mecânicos
     try {
-      const mechanics = await pool.query(
+      const [mechanics] = await pool.query(
         "SELECT * FROM users WHERE role IN ('Mecânico', 'Mecânico Encarregado') AND active = true"
       );
-      if (mechanics.rows.length > 0) {
-        await emailService.sendNewRequestEmail(result.rows[0], mechanics.rows);
+      if (mechanics.length > 0) {
+        await emailService.sendNewRequestEmail(inserted[0], mechanics);
       }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail:', emailError);
       // Não bloqueia a criação da solicitação
     }
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação:', error);
     res.status(500).json({ error: 'Erro ao criar solicitação', message: error.message });
@@ -321,27 +332,30 @@ app.put('/api/requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
-    const result = await pool.query(
-      'UPDATE requests SET equipment = $1, sector = $2, description = $3, urgency = $4, status = $5, requested_by = $6, assigned_to = $7, service_executed = $8, preventive_maintenance = $9 WHERE id = $10 RETURNING *',
+    await pool.query(
+      'UPDATE requests SET equipment = ?, sector = ?, description = ?, urgency = ?, status = ?, requested_by = ?, assigned_to = ?, service_executed = ?, preventive_maintenance = ? WHERE id = ?',
       [equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, id]
     );
+    
+    // Buscar registro atualizado
+    const [updated] = await pool.query('SELECT * FROM requests WHERE id = ?', [id]);
     
     // Enviar e-mail se foi concluído
     if (status === 'Concluído' && requested_by) {
       try {
-        const user = await pool.query(
-          'SELECT * FROM users WHERE name = $1 OR id = $1',
-          [requested_by]
+        const [user] = await pool.query(
+          'SELECT * FROM users WHERE name = ? OR id = ?',
+          [requested_by, requested_by]
         );
-        if (user.rows.length > 0) {
-          await emailService.sendCompletedRequestEmail(result.rows[0], user.rows[0]);
+        if (user.length > 0) {
+          await emailService.sendCompletedRequestEmail(updated[0], user[0]);
         }
       } catch (emailError) {
         console.error('⚠️ Erro ao enviar e-mail:', emailError);
       }
     }
     
-    res.json(result.rows[0]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar solicitação:', error);
     res.status(500).json({ error: 'Erro ao atualizar solicitação', message: error.message });
@@ -352,7 +366,7 @@ app.put('/api/requests/:id', async (req, res) => {
 app.delete('/api/requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM requests WHERE id = $1', [id]);
+    await pool.query('DELETE FROM requests WHERE id = ?', [id]);
     res.json({ message: 'Solicitação deletada com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar solicitação:', error);
@@ -365,8 +379,8 @@ app.delete('/api/requests/:id', async (req, res) => {
 // GET - Listar todos os registros de agulhas
 app.get('/api/agulhas', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM agulhas ORDER BY date DESC, created_at DESC');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM agulhas ORDER BY date DESC, created_at DESC');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar agulhas:', error);
     res.status(500).json({ error: 'Erro ao listar agulhas', message: error.message });
@@ -377,11 +391,12 @@ app.get('/api/agulhas', async (req, res) => {
 app.post('/api/agulhas', async (req, res) => {
   try {
     const { tear, size, quantity, employee, date } = req.body;
-    const result = await pool.query(
-      'INSERT INTO agulhas (tear, size, quantity, employee, date) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO agulhas (tear, size, quantity, employee, date) VALUES (?, ?, ?, ?, ?)',
       [tear, size, quantity || 1, employee, date]
     );
-    res.status(201).json(result.rows[0]);
+    const [inserted] = await pool.query('SELECT * FROM agulhas WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar registro de agulha:', error);
     res.status(500).json({ error: 'Erro ao criar registro de agulha', message: error.message });
@@ -392,7 +407,7 @@ app.post('/api/agulhas', async (req, res) => {
 app.delete('/api/agulhas/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM agulhas WHERE id = $1', [id]);
+    await pool.query('DELETE FROM agulhas WHERE id = ?', [id]);
     res.json({ message: 'Registro de agulha deletado com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar registro de agulha:', error);
@@ -405,8 +420,8 @@ app.delete('/api/agulhas/:id', async (req, res) => {
 // GET - Listar todos os PDFs
 app.get('/api/pdfs', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM pdfs ORDER BY created_at DESC');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM pdfs ORDER BY created_at DESC');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar PDFs:', error);
     res.status(500).json({ error: 'Erro ao listar PDFs', message: error.message });
@@ -417,11 +432,12 @@ app.get('/api/pdfs', async (req, res) => {
 app.post('/api/pdfs', async (req, res) => {
   try {
     const { title, sector, file_url, file_name, uploaded_by } = req.body;
-    const result = await pool.query(
-      'INSERT INTO pdfs (title, sector, file_url, file_name, uploaded_by) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO pdfs (title, sector, file_url, file_name, uploaded_by) VALUES (?, ?, ?, ?, ?)',
       [title, sector, file_url, file_name, uploaded_by]
     );
-    res.status(201).json(result.rows[0]);
+    const [inserted] = await pool.query('SELECT * FROM pdfs WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar PDF:', error);
     res.status(500).json({ error: 'Erro ao criar PDF', message: error.message });
@@ -432,7 +448,7 @@ app.post('/api/pdfs', async (req, res) => {
 app.delete('/api/pdfs/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM pdfs WHERE id = $1', [id]);
+    await pool.query('DELETE FROM pdfs WHERE id = ?', [id]);
     res.json({ message: 'PDF deletado com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar PDF:', error);
@@ -445,8 +461,8 @@ app.delete('/api/pdfs/:id', async (req, res) => {
 // GET - Listar todas as solicitações de peças
 app.get('/api/parts-requests', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM parts_requests ORDER BY created_at DESC');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM parts_requests ORDER BY created_at DESC');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar solicitações de peças:', error);
     res.status(500).json({ error: 'Erro ao listar solicitações de peças', message: error.message });
@@ -456,25 +472,32 @@ app.get('/api/parts-requests', async (req, res) => {
 // POST - Criar nova solicitação de peça
 app.post('/api/parts-requests', async (req, res) => {
   try {
-    const { part_name, quantity, equipment, sector, requested_by, status, notes } = req.body;
-    const result = await pool.query(
-      'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes]
+    const { part_name, quantity, equipment, sector, requested_by, status, notes, images } = req.body;
+    
+    const [result] = await pool.query(
+      'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, images ? JSON.stringify(images) : null]
+    );
+    
+    // Buscar o registro inserido
+    const [inserted] = await pool.query(
+      'SELECT * FROM parts_requests WHERE id = ?',
+      [result.insertId]
     );
     
     // Enviar e-mail para gerentes
     try {
-      const managers = await pool.query(
+      const [managers] = await pool.query(
         "SELECT * FROM users WHERE role = 'Gerente' AND active = true"
       );
-      if (managers.rows.length > 0) {
-        await emailService.sendNewPartsRequestEmail(result.rows[0], managers.rows);
+      if (managers.length > 0) {
+        await emailService.sendNewPartsRequestEmail(inserted[0], managers);
       }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail:', emailError);
     }
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação de peça:', error);
     res.status(500).json({ error: 'Erro ao criar solicitação de peça', message: error.message });
@@ -495,11 +518,12 @@ app.put('/api/parts-requests/:id', async (req, res) => {
       return res.status(400).json({ error: 'Nenhum campo para atualizar' });
     }
     
-    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
-    const query = `UPDATE parts_requests SET ${setClause} WHERE id = $${fields.length + 1} RETURNING *`;
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const query = `UPDATE parts_requests SET ${setClause} WHERE id = ?`;
     
-    const result = await pool.query(query, [...values, id]);
-    res.json(result.rows[0]);
+    await pool.query(query, [...values, id]);
+    const [updated] = await pool.query('SELECT * FROM parts_requests WHERE id = ?', [id]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao atualizar solicitação de peça:', error);
     res.status(500).json({ error: 'Erro ao atualizar solicitação de peça', message: error.message });
@@ -510,7 +534,7 @@ app.put('/api/parts-requests/:id', async (req, res) => {
 app.delete('/api/parts-requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM parts_requests WHERE id = $1', [id]);
+    await pool.query('DELETE FROM parts_requests WHERE id = ?', [id]);
     res.json({ message: 'Solicitação de peça deletada com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao deletar solicitação de peça:', error);
@@ -523,8 +547,8 @@ app.delete('/api/parts-requests/:id', async (req, res) => {
 // GET - Listar todas as permissões
 app.get('/api/permissions', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM permissions ORDER BY role');
-    res.json(result.rows);
+    const [result] = await pool.query('SELECT * FROM permissions ORDER BY role');
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar permissões:', error);
     res.status(500).json({ error: 'Erro ao listar permissões', message: error.message });
@@ -537,11 +561,11 @@ app.get('/api/permissions', async (req, res) => {
 app.get('/api/notifications/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const result = await pool.query(
-      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+    const [result] = await pool.query(
+      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC',
       [userId]
     );
-    res.json(result.rows);
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar notificações:', error);
     res.status(500).json({ error: 'Erro ao listar notificações', message: error.message });
@@ -552,11 +576,12 @@ app.get('/api/notifications/:userId', async (req, res) => {
 app.post('/api/notifications', async (req, res) => {
   try {
     const { user_id, title, message, type } = req.body;
-    const result = await pool.query(
-      'INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4) RETURNING *',
+    const [result] = await pool.query(
+      'INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)',
       [user_id, title, message, type || 'info']
     );
-    res.status(201).json(result.rows[0]);
+    const [inserted] = await pool.query('SELECT * FROM notifications WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar notificação:', error);
     res.status(500).json({ error: 'Erro ao criar notificação', message: error.message });
@@ -567,11 +592,12 @@ app.post('/api/notifications', async (req, res) => {
 app.put('/api/notifications/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(
-      'UPDATE notifications SET read = true WHERE id = $1 RETURNING *',
+    await pool.query(
+      'UPDATE notifications SET read = true WHERE id = ?',
       [id]
     );
-    res.json(result.rows[0]);
+    const [updated] = await pool.query('SELECT * FROM notifications WHERE id = ?', [id]);
+    res.json(updated[0]);
   } catch (error) {
     console.error('❌ Erro ao marcar notificação como lida:', error);
     res.status(500).json({ error: 'Erro ao marcar notificação como lida', message: error.message });
@@ -654,11 +680,11 @@ app.delete('/api/upload/:filename', async (req, res) => {
 
 app.get('/api/health', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()');
+    const [result] = await pool.query('SELECT NOW() as now');
     res.json({ 
       status: 'healthy', 
       database: 'connected',
-      timestamp: result.rows[0].now 
+      timestamp: result[0].now 
     });
   } catch (error) {
     res.status(500).json({ 
