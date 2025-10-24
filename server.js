@@ -105,6 +105,13 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
   try {
     const { name, username, password, role, sector, birthdate, email, phone } = req.body;
+    
+    // Verificar se username já existe
+    const [existing] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Erro ao criar usuário', message: 'Nome de usuário já existe' });
+    }
+    
     const [result] = await pool.query(
       'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [name, username, password, role, sector, birthdate, email || null, phone || null]
@@ -114,6 +121,10 @@ app.post('/api/users', async (req, res) => {
     res.status(201).json(inserted[0]);
   } catch (error) {
     console.error('❌ Erro ao criar usuário:', error);
+    // Se for erro de chave duplicada, retornar mensagem amigável
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'Erro ao criar usuário', message: 'Nome de usuário já existe' });
+    }
     res.status(500).json({ error: 'Erro ao criar usuário', message: error.message });
   }
 });
