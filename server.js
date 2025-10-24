@@ -676,6 +676,291 @@ app.delete('/api/upload/:filename', async (req, res) => {
   }
 });
 
+// ==================== PREVENTIVE MAINTENANCE ====================
+
+// GET - Listar template do checklist
+app.get('/api/preventive-maintenance/checklist-template', async (req, res) => {
+  try {
+    const [template] = await pool.query(
+      'SELECT * FROM checklist_template WHERE is_active = true ORDER BY item_order'
+    );
+    res.json(template);
+  } catch (error) {
+    console.error('❌ Erro ao listar template do checklist:', error);
+    res.status(500).json({ error: 'Erro ao listar template', message: error.message });
+  }
+});
+
+// GET - Listar agendamentos de manutenção preventiva
+app.get('/api/preventive-maintenance/schedule', async (req, res) => {
+  try {
+    const [schedules] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule ORDER BY scheduled_date ASC'
+    );
+    res.json(schedules);
+  } catch (error) {
+    console.error('❌ Erro ao listar agendamentos:', error);
+    res.status(500).json({ error: 'Erro ao listar agendamentos', message: error.message });
+  }
+});
+
+// GET - Buscar agendamento por ID com checklist
+app.get('/api/preventive-maintenance/schedule/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [schedule] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE id = ?',
+      [id]
+    );
+    
+    if (schedule.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+    
+    const [checklist] = await pool.query(
+      'SELECT * FROM preventive_maintenance_checklist WHERE maintenance_id = ? ORDER BY item_order',
+      [id]
+    );
+    
+    res.json({ ...schedule[0], checklist });
+  } catch (error) {
+    console.error('❌ Erro ao buscar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao buscar agendamento', message: error.message });
+  }
+});
+
+// POST - Criar agendamento de manutenção preventiva
+app.post('/api/preventive-maintenance/schedule', async (req, res) => {
+  try {
+    const { equipment_id, equipment_name, sector, scheduled_date, frequency_days, created_by, notes } = req.body;
+    
+    // Criar agendamento
+    const [result] = await pool.query(
+      'INSERT INTO preventive_maintenance_schedule (equipment_id, equipment_name, sector, scheduled_date, frequency_days, created_by, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [equipment_id, equipment_name, sector, scheduled_date, frequency_days || 90, created_by, notes]
+    );
+    
+    const maintenanceId = result.insertId;
+    
+    // Buscar template do checklist
+    const [template] = await pool.query(
+      'SELECT * FROM checklist_template WHERE is_active = true ORDER BY item_order'
+    );
+    
+    // Criar itens do checklist para esta manutenção
+    for (const item of template) {
+      await pool.query(
+        'INSERT INTO preventive_maintenance_checklist (maintenance_id, item_name, item_order) VALUES (?, ?, ?)',
+        [maintenanceId, item.item_name, item.item_order]
+      );
+    }
+    
+    // Buscar o registro completo
+    const [inserted] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE id = ?',
+      [maintenanceId]
+    );
+    
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao criar agendamento', message: error.message });
+  }
+});
+
+// PUT - Atualizar status do agendamento
+app.put('/api/preventive-maintenance/schedule/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, completed_by, notes } = req.body;
+    
+    const updates = [];
+    const values = [];
+    
+    if (status) {
+      updates.push('status = ?');
+      values.push(status);
+    }
+    
+    if (completed_by) {
+      updates.push('completed_by = ?');
+      values.push(completed_by);
+    }
+    
+    if (notes !== undefined) {
+      updates.push('notes = ?');
+      values.push(notes);
+    }
+    
+    if (status === 'Concluída') {
+      updates.push('completed_at = NOW()');
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+    
+    values.push(id);
+    
+    await pool.query(
+      `UPDATE preventive_maintenance_schedule SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+    
+    const [updated] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE id = ?',
+      [id]
+    );
+    
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar agendamento', message: error.message });
+  }
+});
+
+// PUT - Atualizar item do checklist
+app.put('/api/preventive-maintenance/checklist/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_completed, observations, completed_by } = req.body;
+    
+    const updates = [];
+    const values = [];
+    
+    if (is_completed !== undefined) {
+      updates.push('is_completed = ?');
+      values.push(is_completed);
+      
+      if (is_completed) {
+        updates.push('completed_at = NOW()');
+        if (completed_by) {
+          updates.push('completed_by = ?');
+          values.push(completed_by);
+        }
+      }
+    }
+    
+    if (observations !== undefined) {
+      updates.push('observations = ?');
+      values.push(observations);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+    
+    values.push(id);
+    
+    await pool.query(
+      `UPDATE preventive_maintenance_checklist SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+    
+    const [updated] = await pool.query(
+      'SELECT * FROM preventive_maintenance_checklist WHERE id = ?',
+      [id]
+    );
+    
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar item do checklist:', error);
+    res.status(500).json({ error: 'Erro ao atualizar item', message: error.message });
+  }
+});
+
+// POST - Finalizar manutenção e salvar no histórico
+app.post('/api/preventive-maintenance/complete/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { performed_by, general_observations, next_maintenance_date } = req.body;
+    
+    // Buscar agendamento
+    const [schedule] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE id = ?',
+      [id]
+    );
+    
+    if (schedule.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+    
+    // Buscar checklist
+    const [checklist] = await pool.query(
+      'SELECT * FROM preventive_maintenance_checklist WHERE maintenance_id = ?',
+      [id]
+    );
+    
+    // Salvar no histórico
+    await pool.query(
+      'INSERT INTO preventive_maintenance_history (equipment_id, equipment_name, maintenance_date, performed_by, checklist_summary, general_observations, next_maintenance_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        schedule[0].equipment_id,
+        schedule[0].equipment_name,
+        new Date(),
+        performed_by,
+        JSON.stringify(checklist),
+        general_observations,
+        next_maintenance_date
+      ]
+    );
+    
+    // Atualizar status para concluída
+    await pool.query(
+      'UPDATE preventive_maintenance_schedule SET status = "Concluída", completed_at = NOW(), completed_by = ? WHERE id = ?',
+      [performed_by, id]
+    );
+    
+    // Se houver próxima data, criar novo agendamento
+    if (next_maintenance_date) {
+      await pool.query(
+        'INSERT INTO preventive_maintenance_schedule (equipment_id, equipment_name, sector, scheduled_date, frequency_days, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+        [
+          schedule[0].equipment_id,
+          schedule[0].equipment_name,
+          schedule[0].sector,
+          next_maintenance_date,
+          schedule[0].frequency_days,
+          performed_by
+        ]
+      );
+    }
+    
+    res.json({ success: true, message: 'Manutenção finalizada com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao finalizar manutenção:', error);
+    res.status(500).json({ error: 'Erro ao finalizar manutenção', message: error.message });
+  }
+});
+
+// GET - Buscar histórico de manutenções de um equipamento
+app.get('/api/preventive-maintenance/history/:equipment_id', async (req, res) => {
+  try {
+    const { equipment_id } = req.params;
+    const [history] = await pool.query(
+      'SELECT * FROM preventive_maintenance_history WHERE equipment_id = ? ORDER BY maintenance_date DESC',
+      [equipment_id]
+    );
+    res.json(history);
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico', message: error.message });
+  }
+});
+
+// GET - Buscar manutenções vencidas (para criar solicitações automáticas)
+app.get('/api/preventive-maintenance/overdue', async (req, res) => {
+  try {
+    const [overdue] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE scheduled_date <= CURDATE() AND status = "Pendente" ORDER BY scheduled_date ASC'
+    );
+    res.json(overdue);
+  } catch (error) {
+    console.error('❌ Erro ao buscar manutenções vencidas:', error);
+    res.status(500).json({ error: 'Erro ao buscar manutenções vencidas', message: error.message });
+  }
+});
+
 // ==================== HEALTH CHECK ====================
 
 app.get('/api/health', async (req, res) => {
