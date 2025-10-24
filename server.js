@@ -475,7 +475,14 @@ app.delete('/api/pdfs/:id', async (req, res) => {
 app.get('/api/parts-requests', async (req, res) => {
   try {
     const [result] = await pool.query('SELECT * FROM parts_requests ORDER BY created_at DESC');
-    res.json(result);
+    
+    // Parsear imagens de JSON string para array
+    const parsedResult = result.map(item => ({
+      ...item,
+      images: item.images ? (typeof item.images === 'string' ? JSON.parse(item.images) : item.images) : []
+    }));
+    
+    res.json(parsedResult);
   } catch (error) {
     console.error('❌ Erro ao listar solicitações de peças:', error);
     res.status(500).json({ error: 'Erro ao listar solicitações de peças', message: error.message });
@@ -487,9 +494,15 @@ app.post('/api/parts-requests', async (req, res) => {
   try {
     const { part_name, quantity, equipment, sector, requested_by, status, notes, images } = req.body;
     
+    // Processar imagens: se for array vazio ou null, salva como null; senão, salva como JSON
+    let imagesToSave = null;
+    if (images && Array.isArray(images) && images.length > 0) {
+      imagesToSave = JSON.stringify(images);
+    }
+    
     const [result] = await pool.query(
       'INSERT INTO parts_requests (part_name, quantity, equipment, sector, requested_by, status, notes, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, images ? JSON.stringify(images) : null]
+      [part_name, quantity || 1, equipment, sector, requested_by, status || 'Pendente', notes, imagesToSave]
     );
     
     // Buscar o registro inserido
@@ -498,19 +511,25 @@ app.post('/api/parts-requests', async (req, res) => {
       [result.insertId]
     );
     
+    // Parsear imagens no resultado
+    const parsedInserted = {
+      ...inserted[0],
+      images: inserted[0].images ? (typeof inserted[0].images === 'string' ? JSON.parse(inserted[0].images) : inserted[0].images) : []
+    };
+    
     // Enviar e-mail para gerentes
     try {
       const [managers] = await pool.query(
         "SELECT * FROM users WHERE role = 'Gerente' AND active = true"
       );
       if (managers.length > 0) {
-        await emailService.sendNewPartsRequestEmail(inserted[0], managers);
+        await emailService.sendNewPartsRequestEmail(parsedInserted, managers);
       }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail:', emailError);
     }
     
-    res.status(201).json(inserted[0]);
+    res.status(201).json(parsedInserted);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação de peça:', error);
     res.status(500).json({ error: 'Erro ao criar solicitação de peça', message: error.message });
@@ -522,6 +541,15 @@ app.put('/api/parts-requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    
+    // Processar imagens se estiver sendo atualizado
+    if (updates.images !== undefined) {
+      if (Array.isArray(updates.images) && updates.images.length > 0) {
+        updates.images = JSON.stringify(updates.images);
+      } else {
+        updates.images = null;
+      }
+    }
     
     // Construir query dinâmica apenas com campos enviados
     const fields = Object.keys(updates);
@@ -536,7 +564,14 @@ app.put('/api/parts-requests/:id', async (req, res) => {
     
     await pool.query(query, [...values, id]);
     const [updated] = await pool.query('SELECT * FROM parts_requests WHERE id = ?', [id]);
-    res.json(updated[0]);
+    
+    // Parsear imagens no resultado
+    const parsedUpdated = {
+      ...updated[0],
+      images: updated[0].images ? (typeof updated[0].images === 'string' ? JSON.parse(updated[0].images) : updated[0].images) : []
+    };
+    
+    res.json(parsedUpdated);
   } catch (error) {
     console.error('❌ Erro ao atualizar solicitação de peça:', error);
     res.status(500).json({ error: 'Erro ao atualizar solicitação de peça', message: error.message });
@@ -1005,4 +1040,3 @@ app.listen(PORT, () => {
 process.on('unhandledRejection', (err) => {
   console.error('❌ Erro não tratado:', err);
 });
-
