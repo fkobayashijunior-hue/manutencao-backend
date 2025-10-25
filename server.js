@@ -1637,7 +1637,7 @@ app.put('/api/accessory-order-items/:id/purchase', async (req, res) => {
   }
 });
 
-// PUT - Registrar recebimento do item
+// PUT - Registrar recebimento do item (parcial ou total)
 app.put('/api/accessory-order-items/:id/receive', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1649,47 +1649,129 @@ app.put('/api/accessory-order-items/:id/receive', async (req, res) => {
       received_by 
     } = req.body;
     
-    // Verificar se item existe e está comprado
+    // Validações
+    if (!received_quantity || received_quantity <= 0) {
+      return res.status(400).json({ error: 'Quantidade recebida deve ser maior que zero' });
+    }
+    
+    // Verificar se item existe e está comprado ou em recebimento parcial
     const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
     if (existing.length === 0) {
       return res.status(404).json({ error: 'Item não encontrado' });
     }
     
-    if (existing[0].status !== 'Comprado') {
-      return res.status(400).json({ error: 'Item deve estar comprado para registrar recebimento' });
+    const item = existing[0];
+    
+    // Verificar se pode receber
+    if (item.status !== 'Comprado' && item.status !== 'Recebimento Parcial') {
+      return res.status(400).json({ 
+        error: 'Item deve estar comprado ou em recebimento parcial para registrar recebimento' 
+      });
     }
     
+    // Calcular quantidade total recebida
+    const currentReceived = item.quantity_received || 0;
+    const newTotalReceived = currentReceived + received_quantity;
+    
+    // Verificar se não excede a quantidade pedida
+    if (newTotalReceived > item.quantity) {
+      return res.status(400).json({ 
+        error: `Quantidade recebida (${newTotalReceived}) excede quantidade pedida (${item.quantity})` 
+      });
+    }
+    
+    // Determinar novo status
+    let newStatus;
+    if (newTotalReceived === item.quantity) {
+      // Recebeu tudo
+      newStatus = reception_status === 'Com Problemas' ? 'Recebido com Problemas' : 'Recebido';
+    } else {
+      // Recebeu parcial
+      newStatus = 'Recebimento Parcial';
+    }
+    
+    // Registrar no histórico
+    await pool.query(
+      `INSERT INTO accessory_receive_history 
+       (order_item_id, quantity_received, receive_date, receive_status, notes, received_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        received_quantity,
+        received_date || new Date(),
+        reception_status || 'OK',
+        reception_notes || null,
+        received_by || null
+      ]
+    );
+    
+    // Atualizar item
     await pool.query(
       `UPDATE accessory_order_items 
-       SET status = 'Recebido', 
-           received_date = ?, 
-           received_quantity = ?, 
-           reception_status = ?, 
-           reception_notes = ?, 
-           received_at = NOW(), 
+       SET status = ?, 
+           quantity_received = ?,
+           received_date = ?,
+           reception_status = ?,
+           reception_notes = ?,
+           received_at = NOW(),
            received_by = ?
        WHERE id = ?`,
       [
-        received_date || null, 
-        received_quantity || null, 
-        reception_status || 'OK', 
-        reception_notes || null, 
-        received_by || null, 
+        newStatus,
+        newTotalReceived,
+        received_date || null,
+        reception_status || 'OK',
+        reception_notes || null,
+        received_by || null,
         id
       ]
     );
     
     // Atualizar status do pedido
-    await updateAccessoryOrderStatus(existing[0].order_id);
+    await updateAccessoryOrderStatus(item.order_id);
     
-    // Buscar item atualizado
+    // Buscar item atualizado com histórico
     const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    const [history] = await pool.query(
+      `SELECT h.*, u.name as received_by_name 
+       FROM accessory_receive_history h
+       LEFT JOIN users u ON h.received_by = u.id
+       WHERE h.order_item_id = ?
+       ORDER BY h.receive_date DESC`,
+      [id]
+    );
     
-    console.log('✅ Recebimento registrado para item:', id);
-    res.json(updated[0]);
+    const result = {
+      ...updated[0],
+      receive_history: history
+    };
+    
+    console.log(`✅ Recebimento registrado: ${received_quantity}/${item.quantity} - Status: ${newStatus}`);
+    res.json(result);
   } catch (error) {
     console.error('❌ Erro ao registrar recebimento:', error);
     res.status(500).json({ error: 'Erro ao registrar recebimento', message: error.message });
+  }
+});
+
+// GET - Buscar histórico de recebimentos de um item
+app.get('/api/accessory-order-items/:id/receive-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [history] = await pool.query(
+      `SELECT h.*, u.name as received_by_name 
+       FROM accessory_receive_history h
+       LEFT JOIN users u ON h.received_by = u.id
+       WHERE h.order_item_id = ?
+       ORDER BY h.receive_date DESC`,
+      [id]
+    );
+    
+    res.json(history);
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico de recebimentos:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico', message: error.message });
   }
 });
 
