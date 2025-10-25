@@ -469,6 +469,47 @@ app.delete('/api/pdfs/:id', async (req, res) => {
   }
 });
 
+// ==================== POPS ====================
+
+// GET - Listar todos os POPs
+app.get('/api/pops', async (req, res) => {
+  try {
+    const [result] = await pool.query('SELECT * FROM pops ORDER BY created_at DESC');
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar POPs:', error);
+    res.status(500).json({ error: 'Erro ao listar POPs', message: error.message });
+  }
+});
+
+// POST - Criar novo POP
+app.post('/api/pops', async (req, res) => {
+  try {
+    const { title, description, sector, scope, file_url, file_name, uploaded_by } = req.body;
+    const [result] = await pool.query(
+      'INSERT INTO pops (title, description, sector, scope, file_url, file_name, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [title, description, sector, scope, file_url, file_name, uploaded_by]
+    );
+    const [inserted] = await pool.query('SELECT * FROM pops WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar POP:', error);
+    res.status(500).json({ error: 'Erro ao criar POP', message: error.message });
+  }
+});
+
+// DELETE - Deletar POP
+app.delete('/api/pops/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM pops WHERE id = ?', [id]);
+    res.json({ message: 'POP deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar POP:', error);
+    res.status(500).json({ error: 'Erro ao deletar POP', message: error.message });
+  }
+});
+
 // ==================== PARTS REQUESTS ====================
 
 // GET - Listar todas as solicitações de peças
