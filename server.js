@@ -1407,10 +1407,9 @@ app.post('/api/accessory-orders', async (req, res) => {
     
     // Buscar pedido completo criado
     const [newOrder] = await pool.query(`
-      SELECT ao.*, u.name as requester_name, s.name as sector_name
+      SELECT ao.*, u.name as requester_name
       FROM accessory_orders ao
       LEFT JOIN users u ON ao.requester_id = u.id
-      LEFT JOIN sectors s ON ao.sector_id = s.id
       WHERE ao.id = ?
     `, [orderId]);
     
