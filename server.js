@@ -1096,9 +1096,8 @@ app.get('/api/accessories', async (req, res) => {
     const { status, category, sector_id } = req.query;
     
     let query = `
-      SELECT a.*, s.name as sector_name, u.name as created_by_name
+      SELECT a.*, u.name as created_by_name
       FROM accessories a
-      LEFT JOIN sectors s ON a.sector_id = s.id
       LEFT JOIN users u ON a.created_by = u.id
       WHERE 1=1
     `;
@@ -1134,9 +1133,8 @@ app.get('/api/accessories/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const [result] = await pool.query(`
-      SELECT a.*, s.name as sector_name, u.name as created_by_name
+      SELECT a.*, u.name as created_by_name
       FROM accessories a
-      LEFT JOIN sectors s ON a.sector_id = s.id
       LEFT JOIN users u ON a.created_by = u.id
       WHERE a.id = ?
     `, [id]);
