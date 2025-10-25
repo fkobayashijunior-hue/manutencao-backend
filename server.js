@@ -1259,7 +1259,6 @@ app.get('/api/accessory-orders', async (req, res) => {
       SELECT 
         ao.*,
         u.name as requester_name,
-        s.name as sector_name,
         COUNT(aoi.id) as total_items,
         SUM(CASE WHEN aoi.status = 'Pendente' THEN 1 ELSE 0 END) as pending_items,
         SUM(CASE WHEN aoi.status = 'Aprovado' THEN 1 ELSE 0 END) as approved_items,
@@ -1267,7 +1266,6 @@ app.get('/api/accessory-orders', async (req, res) => {
         SUM(CASE WHEN aoi.status = 'Recebido' THEN 1 ELSE 0 END) as received_items
       FROM accessory_orders ao
       LEFT JOIN users u ON ao.requester_id = u.id
-      LEFT JOIN sectors s ON ao.sector_id = s.id
       LEFT JOIN accessory_order_items aoi ON ao.id = aoi.order_id
       WHERE 1=1
     `;
@@ -1315,10 +1313,9 @@ app.get('/api/accessory-orders/:id', async (req, res) => {
     
     // Buscar pedido
     const [orders] = await pool.query(`
-      SELECT ao.*, u.name as requester_name, s.name as sector_name
+      SELECT ao.*, u.name as requester_name
       FROM accessory_orders ao
       LEFT JOIN users u ON ao.requester_id = u.id
-      LEFT JOIN sectors s ON ao.sector_id = s.id
       WHERE ao.id = ?
     `, [id]);
     
