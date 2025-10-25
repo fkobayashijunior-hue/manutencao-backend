@@ -1081,3 +1081,622 @@ app.listen(PORT, () => {
 process.on('unhandledRejection', (err) => {
   console.error('❌ Erro não tratado:', err);
 });
+
+
+// ==================== ACCESSORY ORDERS (PEDIDO DE ACESSÓRIOS) ====================
+// Rotas para o módulo de Pedido de Acessórios v7.2
+// Desenvolvido por: Kobayashi & Pyotec
+// Cliente: Aza Têxtil | Zen Confecções
+
+// ========== ACCESSORIES (Cadastro de Acessórios) ==========
+
+// GET - Listar todos os acessórios
+app.get('/api/accessories', async (req, res) => {
+  try {
+    const { status, category, sector_id } = req.query;
+    
+    let query = `
+      SELECT a.*, s.name as sector_name, u.name as created_by_name
+      FROM accessories a
+      LEFT JOIN sectors s ON a.sector_id = s.id
+      LEFT JOIN users u ON a.created_by = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ' AND a.status = ?';
+      params.push(status);
+    }
+    
+    if (category) {
+      query += ' AND a.category = ?';
+      params.push(category);
+    }
+    
+    if (sector_id) {
+      query += ' AND a.sector_id = ?';
+      params.push(sector_id);
+    }
+    
+    query += ' ORDER BY a.description';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar acessórios:', error);
+    res.status(500).json({ error: 'Erro ao listar acessórios', message: error.message });
+  }
+});
+
+// GET - Buscar acessório por ID
+app.get('/api/accessories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query(`
+      SELECT a.*, s.name as sector_name, u.name as created_by_name
+      FROM accessories a
+      LEFT JOIN sectors s ON a.sector_id = s.id
+      LEFT JOIN users u ON a.created_by = u.id
+      WHERE a.id = ?
+    `, [id]);
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Acessório não encontrado' });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    console.error('❌ Erro ao buscar acessório:', error);
+    res.status(500).json({ error: 'Erro ao buscar acessório', message: error.message });
+  }
+});
+
+// POST - Criar novo acessório
+app.post('/api/accessories', async (req, res) => {
+  try {
+    const { code, description, image_url, sector_id, category, unit, status, created_by } = req.body;
+    
+    // Validações
+    if (!code || !description) {
+      return res.status(400).json({ error: 'Código e descrição são obrigatórios' });
+    }
+    
+    // Verificar se código já existe
+    const [existing] = await pool.query('SELECT id FROM accessories WHERE code = ?', [code]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Código já cadastrado' });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO accessories (code, description, image_url, sector_id, category, unit, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [code, description, image_url || null, sector_id || null, category || 'Outros', unit || 'Peça', status || 'Ativo', created_by || null]
+    );
+    
+    // Buscar o acessório criado
+    const [newAccessory] = await pool.query('SELECT * FROM accessories WHERE id = ?', [result.insertId]);
+    
+    console.log('✅ Acessório criado:', newAccessory[0]);
+    res.status(201).json(newAccessory[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar acessório:', error);
+    res.status(500).json({ error: 'Erro ao criar acessório', message: error.message });
+  }
+});
+
+// PUT - Atualizar acessório
+app.put('/api/accessories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { code, description, image_url, sector_id, category, unit, status } = req.body;
+    
+    // Verificar se acessório existe
+    const [existing] = await pool.query('SELECT id FROM accessories WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Acessório não encontrado' });
+    }
+    
+    // Verificar se código já existe em outro acessório
+    if (code) {
+      const [duplicate] = await pool.query('SELECT id FROM accessories WHERE code = ? AND id != ?', [code, id]);
+      if (duplicate.length > 0) {
+        return res.status(400).json({ error: 'Código já cadastrado em outro acessório' });
+      }
+    }
+    
+    await pool.query(
+      `UPDATE accessories 
+       SET code = ?, description = ?, image_url = ?, sector_id = ?, category = ?, unit = ?, status = ?
+       WHERE id = ?`,
+      [code, description, image_url || null, sector_id || null, category, unit, status, id]
+    );
+    
+    // Buscar o acessório atualizado
+    const [updated] = await pool.query('SELECT * FROM accessories WHERE id = ?', [id]);
+    
+    console.log('✅ Acessório atualizado:', updated[0]);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar acessório:', error);
+    res.status(500).json({ error: 'Erro ao atualizar acessório', message: error.message });
+  }
+});
+
+// DELETE - Excluir acessório
+app.delete('/api/accessories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar se acessório existe
+    const [existing] = await pool.query('SELECT id FROM accessories WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Acessório não encontrado' });
+    }
+    
+    // Verificar se há pedidos com este acessório
+    const [orders] = await pool.query('SELECT id FROM accessory_order_items WHERE accessory_id = ?', [id]);
+    if (orders.length > 0) {
+      return res.status(400).json({ error: 'Não é possível excluir acessório que possui pedidos' });
+    }
+    
+    await pool.query('DELETE FROM accessories WHERE id = ?', [id]);
+    
+    console.log('✅ Acessório excluído:', id);
+    res.json({ message: 'Acessório excluído com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao excluir acessório:', error);
+    res.status(500).json({ error: 'Erro ao excluir acessório', message: error.message });
+  }
+});
+
+// ========== ACCESSORY ORDERS (Pedidos) ==========
+
+// GET - Listar todos os pedidos
+app.get('/api/accessory-orders', async (req, res) => {
+  try {
+    const { status, requester_id, sector_id, start_date, end_date } = req.query;
+    
+    let query = `
+      SELECT 
+        ao.*,
+        u.name as requester_name,
+        s.name as sector_name,
+        COUNT(aoi.id) as total_items,
+        SUM(CASE WHEN aoi.status = 'Pendente' THEN 1 ELSE 0 END) as pending_items,
+        SUM(CASE WHEN aoi.status = 'Aprovado' THEN 1 ELSE 0 END) as approved_items,
+        SUM(CASE WHEN aoi.status = 'Comprado' THEN 1 ELSE 0 END) as purchased_items,
+        SUM(CASE WHEN aoi.status = 'Recebido' THEN 1 ELSE 0 END) as received_items
+      FROM accessory_orders ao
+      LEFT JOIN users u ON ao.requester_id = u.id
+      LEFT JOIN sectors s ON ao.sector_id = s.id
+      LEFT JOIN accessory_order_items aoi ON ao.id = aoi.order_id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ' AND ao.status = ?';
+      params.push(status);
+    }
+    
+    if (requester_id) {
+      query += ' AND ao.requester_id = ?';
+      params.push(requester_id);
+    }
+    
+    if (sector_id) {
+      query += ' AND ao.sector_id = ?';
+      params.push(sector_id);
+    }
+    
+    if (start_date) {
+      query += ' AND DATE(ao.created_at) >= ?';
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ' AND DATE(ao.created_at) <= ?';
+      params.push(end_date);
+    }
+    
+    query += ' GROUP BY ao.id ORDER BY ao.created_at DESC';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar pedidos:', error);
+    res.status(500).json({ error: 'Erro ao listar pedidos', message: error.message });
+  }
+});
+
+// GET - Buscar pedido por ID (com itens)
+app.get('/api/accessory-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Buscar pedido
+    const [orders] = await pool.query(`
+      SELECT ao.*, u.name as requester_name, s.name as sector_name
+      FROM accessory_orders ao
+      LEFT JOIN users u ON ao.requester_id = u.id
+      LEFT JOIN sectors s ON ao.sector_id = s.id
+      WHERE ao.id = ?
+    `, [id]);
+    
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Pedido não encontrado' });
+    }
+    
+    const order = orders[0];
+    
+    // Buscar itens do pedido
+    const [items] = await pool.query(`
+      SELECT 
+        aoi.*,
+        a.code as accessory_code,
+        a.description as accessory_description,
+        a.image_url as accessory_image,
+        a.unit as accessory_unit,
+        a.category as accessory_category,
+        u1.name as approved_by_name,
+        u2.name as purchased_by_name,
+        u3.name as received_by_name
+      FROM accessory_order_items aoi
+      LEFT JOIN accessories a ON aoi.accessory_id = a.id
+      LEFT JOIN users u1 ON aoi.approved_by = u1.id
+      LEFT JOIN users u2 ON aoi.purchased_by = u2.id
+      LEFT JOIN users u3 ON aoi.received_by = u3.id
+      WHERE aoi.order_id = ?
+      ORDER BY aoi.id
+    `, [id]);
+    
+    order.items = items;
+    
+    res.json(order);
+  } catch (error) {
+    console.error('❌ Erro ao buscar pedido:', error);
+    res.status(500).json({ error: 'Erro ao buscar pedido', message: error.message });
+  }
+});
+
+// POST - Criar novo pedido
+app.post('/api/accessory-orders', async (req, res) => {
+  try {
+    const { requester_id, sector_id, observations, items } = req.body;
+    
+    // Validações
+    if (!requester_id) {
+      return res.status(400).json({ error: 'Solicitante é obrigatório' });
+    }
+    
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'O pedido deve ter pelo menos um item' });
+    }
+    
+    // Gerar número do pedido (formato: ACC-YYYY-NNN)
+    const year = new Date().getFullYear();
+    const [lastOrder] = await pool.query(
+      'SELECT order_number FROM accessory_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1',
+      [`ACC-${year}-%`]
+    );
+    
+    let orderNumber;
+    if (lastOrder.length > 0) {
+      const lastNumber = parseInt(lastOrder[0].order_number.split('-')[2]);
+      orderNumber = `ACC-${year}-${String(lastNumber + 1).padStart(3, '0')}`;
+    } else {
+      orderNumber = `ACC-${year}-001`;
+    }
+    
+    // Criar pedido
+    const [orderResult] = await pool.query(
+      `INSERT INTO accessory_orders (order_number, requester_id, sector_id, observations, status)
+       VALUES (?, ?, ?, ?, 'Pendente')`,
+      [orderNumber, requester_id, sector_id || null, observations || null]
+    );
+    
+    const orderId = orderResult.insertId;
+    
+    // Inserir itens do pedido
+    for (const item of items) {
+      await pool.query(
+        `INSERT INTO accessory_order_items (order_id, accessory_id, quantity, status)
+         VALUES (?, ?, ?, 'Pendente')`,
+        [orderId, item.accessory_id, item.quantity]
+      );
+    }
+    
+    // Buscar pedido completo criado
+    const [newOrder] = await pool.query(`
+      SELECT ao.*, u.name as requester_name, s.name as sector_name
+      FROM accessory_orders ao
+      LEFT JOIN users u ON ao.requester_id = u.id
+      LEFT JOIN sectors s ON ao.sector_id = s.id
+      WHERE ao.id = ?
+    `, [orderId]);
+    
+    // Buscar itens
+    const [orderItems] = await pool.query(`
+      SELECT aoi.*, a.code, a.description, a.image_url, a.unit
+      FROM accessory_order_items aoi
+      LEFT JOIN accessories a ON aoi.accessory_id = a.id
+      WHERE aoi.order_id = ?
+    `, [orderId]);
+    
+    newOrder[0].items = orderItems;
+    
+    console.log('✅ Pedido criado:', orderNumber);
+    res.status(201).json(newOrder[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar pedido:', error);
+    res.status(500).json({ error: 'Erro ao criar pedido', message: error.message });
+  }
+});
+
+// PUT - Atualizar status do pedido
+app.put('/api/accessory-orders/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    // Verificar se pedido existe
+    const [existing] = await pool.query('SELECT id FROM accessory_orders WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Pedido não encontrado' });
+    }
+    
+    await pool.query('UPDATE accessory_orders SET status = ? WHERE id = ?', [status, id]);
+    
+    // Buscar pedido atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_orders WHERE id = ?', [id]);
+    
+    console.log('✅ Status do pedido atualizado:', id, status);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar status do pedido:', error);
+    res.status(500).json({ error: 'Erro ao atualizar status do pedido', message: error.message });
+  }
+});
+
+// DELETE - Cancelar pedido
+app.delete('/api/accessory-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar se pedido existe
+    const [existing] = await pool.query('SELECT id, status FROM accessory_orders WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Pedido não encontrado' });
+    }
+    
+    // Verificar se pode ser cancelado
+    if (['Recebido', 'Cancelado'].includes(existing[0].status)) {
+      return res.status(400).json({ error: 'Não é possível cancelar pedido com este status' });
+    }
+    
+    // Atualizar status para Cancelado
+    await pool.query('UPDATE accessory_orders SET status = ? WHERE id = ?', ['Cancelado', id]);
+    await pool.query('UPDATE accessory_order_items SET status = ? WHERE order_id = ?', ['Cancelado', id]);
+    
+    console.log('✅ Pedido cancelado:', id);
+    res.json({ message: 'Pedido cancelado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao cancelar pedido:', error);
+    res.status(500).json({ error: 'Erro ao cancelar pedido', message: error.message });
+  }
+});
+
+// ========== ACCESSORY ORDER ITEMS (Itens do Pedido) ==========
+
+// Função auxiliar para atualizar status do pedido baseado nos itens
+async function updateAccessoryOrderStatus(orderId) {
+  try {
+    const [items] = await pool.query(
+      'SELECT status FROM accessory_order_items WHERE order_id = ?',
+      [orderId]
+    );
+    
+    if (items.length === 0) return;
+    
+    const statuses = items.map(item => item.status);
+    const allPending = statuses.every(s => s === 'Pendente');
+    const allRejected = statuses.every(s => s === 'Rejeitado');
+    const allCanceled = statuses.every(s => s === 'Cancelado');
+    const allReceived = statuses.every(s => s === 'Recebido' || s === 'Rejeitado' || s === 'Cancelado');
+    const allPurchased = statuses.every(s => ['Comprado', 'Recebido', 'Rejeitado', 'Cancelado'].includes(s));
+    const allApproved = statuses.every(s => ['Aprovado', 'Comprado', 'Recebido', 'Rejeitado', 'Cancelado'].includes(s));
+    
+    const hasReceived = statuses.some(s => s === 'Recebido');
+    const hasPurchased = statuses.some(s => s === 'Comprado');
+    const hasApproved = statuses.some(s => s === 'Aprovado');
+    
+    let newStatus;
+    
+    if (allCanceled) {
+      newStatus = 'Cancelado';
+    } else if (allRejected) {
+      newStatus = 'Rejeitado';
+    } else if (allReceived) {
+      newStatus = 'Recebido';
+    } else if (hasReceived) {
+      newStatus = 'Parcialmente Recebido';
+    } else if (allPurchased) {
+      newStatus = 'Comprado';
+    } else if (hasPurchased) {
+      newStatus = 'Parcialmente Comprado';
+    } else if (allApproved) {
+      newStatus = 'Aprovado';
+    } else if (hasApproved) {
+      newStatus = 'Parcialmente Aprovado';
+    } else if (allPending) {
+      newStatus = 'Pendente';
+    } else {
+      newStatus = 'Em Análise';
+    }
+    
+    await pool.query('UPDATE accessory_orders SET status = ? WHERE id = ?', [newStatus, orderId]);
+    
+    console.log('✅ Status do pedido atualizado automaticamente:', orderId, newStatus);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar status do pedido:', error);
+  }
+}
+
+// PUT - Aprovar/Rejeitar item
+app.put('/api/accessory-order-items/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approved, approved_quantity, approval_notes, approved_by } = req.body;
+    
+    // Verificar se item existe
+    const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+    
+    const newStatus = approved ? 'Aprovado' : 'Rejeitado';
+    
+    await pool.query(
+      `UPDATE accessory_order_items 
+       SET status = ?, approved_quantity = ?, approval_notes = ?, approved_at = NOW(), approved_by = ?
+       WHERE id = ?`,
+      [newStatus, approved_quantity || null, approval_notes || null, approved_by || null, id]
+    );
+    
+    // Atualizar status do pedido baseado nos itens
+    await updateAccessoryOrderStatus(existing[0].order_id);
+    
+    // Buscar item atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    
+    console.log('✅ Item', approved ? 'aprovado' : 'rejeitado', ':', id);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao aprovar/rejeitar item:', error);
+    res.status(500).json({ error: 'Erro ao aprovar/rejeitar item', message: error.message });
+  }
+});
+
+// PUT - Registrar compra do item
+app.put('/api/accessory-order-items/:id/purchase', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      supplier, 
+      purchase_date, 
+      unit_price, 
+      total_price, 
+      expected_arrival_date, 
+      invoice_number, 
+      purchase_notes, 
+      purchased_by 
+    } = req.body;
+    
+    // Verificar se item existe e está aprovado
+    const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+    
+    if (existing[0].status !== 'Aprovado') {
+      return res.status(400).json({ error: 'Item deve estar aprovado para registrar compra' });
+    }
+    
+    await pool.query(
+      `UPDATE accessory_order_items 
+       SET status = 'Comprado', 
+           supplier = ?, 
+           purchase_date = ?, 
+           unit_price = ?, 
+           total_price = ?, 
+           expected_arrival_date = ?, 
+           invoice_number = ?, 
+           purchase_notes = ?, 
+           purchased_at = NOW(), 
+           purchased_by = ?
+       WHERE id = ?`,
+      [
+        supplier, 
+        purchase_date || null, 
+        unit_price || null, 
+        total_price || null, 
+        expected_arrival_date || null, 
+        invoice_number || null, 
+        purchase_notes || null, 
+        purchased_by || null, 
+        id
+      ]
+    );
+    
+    // Atualizar status do pedido
+    await updateAccessoryOrderStatus(existing[0].order_id);
+    
+    // Buscar item atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    
+    console.log('✅ Compra registrada para item:', id);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao registrar compra:', error);
+    res.status(500).json({ error: 'Erro ao registrar compra', message: error.message });
+  }
+});
+
+// PUT - Registrar recebimento do item
+app.put('/api/accessory-order-items/:id/receive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      received_date, 
+      received_quantity, 
+      reception_status, 
+      reception_notes, 
+      received_by 
+    } = req.body;
+    
+    // Verificar se item existe e está comprado
+    const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+    
+    if (existing[0].status !== 'Comprado') {
+      return res.status(400).json({ error: 'Item deve estar comprado para registrar recebimento' });
+    }
+    
+    await pool.query(
+      `UPDATE accessory_order_items 
+       SET status = 'Recebido', 
+           received_date = ?, 
+           received_quantity = ?, 
+           reception_status = ?, 
+           reception_notes = ?, 
+           received_at = NOW(), 
+           received_by = ?
+       WHERE id = ?`,
+      [
+        received_date || null, 
+        received_quantity || null, 
+        reception_status || 'OK', 
+        reception_notes || null, 
+        received_by || null, 
+        id
+      ]
+    );
+    
+    // Atualizar status do pedido
+    await updateAccessoryOrderStatus(existing[0].order_id);
+    
+    // Buscar item atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    
+    console.log('✅ Recebimento registrado para item:', id);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao registrar recebimento:', error);
+    res.status(500).json({ error: 'Erro ao registrar recebimento', message: error.message });
+  }
+});
+
+
