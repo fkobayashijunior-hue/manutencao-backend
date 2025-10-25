@@ -6,6 +6,14 @@ const fs = require('fs');
 const pool = require('./database');
 const initDatabase = require('./init-database');
 const emailService = require('./emailService');
+const cloudinary = require('cloudinary').v2;
+
+// Configurar Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'djob7pxme',
+  api_key: process.env.CLOUDINARY_API_KEY || '327264618148747',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'YVfR9FK2J8XcFhGPxc4wZX_4ZvY'
+});
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -696,13 +704,21 @@ app.put('/api/notifications/:id/read', async (req, res) => {
 // ==================== UPLOAD DE ARQUIVOS ====================
 
 // POST - Upload de arquivo único
+// Rota de upload para Cloudinary
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Upload para Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: 'aza-connect/accessories',
+      resource_type: 'auto'
+    });
+
+    // Deletar arquivo local após upload
+    fs.unlinkSync(req.file.path);
     
     res.status(201).json({
       success: true,
@@ -711,11 +727,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         originalName: req.file.originalname,
         mimetype: req.file.mimetype,
         size: req.file.size,
-        url: fileUrl
+        url: result.secure_url // URL do Cloudinary
       }
     });
   } catch (error) {
     console.error('❌ Erro ao fazer upload:', error);
+    // Tentar deletar arquivo local em caso de erro
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
     res.status(500).json({ error: 'Erro ao fazer upload', message: error.message });
   }
 });
