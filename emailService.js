@@ -280,3 +280,87 @@ module.exports = {
   sendNewPartsRequestEmail
 };
 
+
+
+/**
+ * Enviar e-mail de notificação genérica
+ */
+const sendNotificationEmail = async (email, title, message, type = 'info') => {
+  try {
+    if (!email || !email.includes('@')) {
+      console.log('⚠️ E-mail inválido');
+      return;
+    }
+
+    const typeColors = {
+      info: { gradient: '#667eea, #764ba2', icon: 'ℹ️' },
+      success: { gradient: '#11998e, #38ef7d', icon: '✅' },
+      warning: { gradient: '#f093fb, #f5576c', icon: '⚠️' },
+      error: { gradient: '#eb3349, #f45c43', icon: '❌' }
+    };
+
+    const colorConfig = typeColors[type] || typeColors.info;
+
+    const mailOptions = {
+      from: {
+        name: 'Aza Connect - Sistema de Manutenção',
+        address: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com'
+      },
+      to: email,
+      subject: `${colorConfig.icon} ${title}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, ${colorConfig.gradient}); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .message-box { background: white; padding: 20px; margin: 15px 0; border-radius: 5px; }
+            .button { display: inline-block; padding: 12px 30px; background: linear-gradient(135deg, ${colorConfig.gradient}); color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; color: #999; font-size: 12px; margin-top: 30px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${colorConfig.icon} ${title}</h1>
+            </div>
+            <div class="content">
+              <div class="message-box">
+                <p>${message}</p>
+              </div>
+
+              <p style="text-align: center;">
+                <a href="https://azaconnect.com.br/dist/" class="button">
+                  Acessar Sistema
+                </a>
+              </p>
+            </div>
+            <div class="footer">
+              <p>Aza Connect - Sistema de Manutenção</p>
+              <p>Aza Têxtil | Zen Confecções</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ E-mail de notificação enviado para ${email}:`, info.messageId);
+    return info;
+  } catch (error) {
+    console.error('❌ Erro ao enviar e-mail de notificação:', error);
+    throw error;
+  }
+};
+
+module.exports = {
+  sendNewRequestEmail,
+  sendCompletedRequestEmail,
+  sendNewPartsRequestEmail,
+  sendNotificationEmail
+};
+

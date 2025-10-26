@@ -1796,3 +1796,206 @@ app.get('/api/accessory-order-items/:id/receive-history', async (req, res) => {
 });
 
 
+
+
+// ==================== NOTIFICATIONS ====================
+
+// GET - Listar notificações do usuário
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const { user_id, unread_only } = req.query;
+    
+    let query = 'SELECT * FROM notifications WHERE user_id = ?';
+    const params = [user_id];
+    
+    if (unread_only === 'true') {
+      query += ' AND is_read = FALSE';
+    }
+    
+    query += ' ORDER BY created_at DESC LIMIT 100';
+    
+    const [notifications] = await pool.query(query, params);
+    res.json(notifications);
+  } catch (error) {
+    console.error('❌ Erro ao buscar notificações:', error);
+    res.status(500).json({ error: 'Erro ao buscar notificações', message: error.message });
+  }
+});
+
+// GET - Contar notificações não lidas
+app.get('/api/notifications/unread-count', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    const [result] = await pool.query(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
+      [user_id]
+    );
+    
+    res.json({ count: result[0].count });
+  } catch (error) {
+    console.error('❌ Erro ao contar notificações:', error);
+    res.status(500).json({ error: 'Erro ao contar notificações', message: error.message });
+  }
+});
+
+// POST - Criar notificação
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { user_id, title, message, type, category, related_id } = req.body;
+    
+    const [result] = await pool.query(
+      `INSERT INTO notifications (user_id, title, message, type, category, related_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [user_id, title, message, type || 'info', category || 'system', related_id || null]
+    );
+    
+    const [notification] = await pool.query(
+      'SELECT * FROM notifications WHERE id = ?',
+      [result.insertId]
+    );
+    
+    // Verificar se deve enviar e-mail
+    const [settings] = await pool.query(
+      'SELECT * FROM notification_settings WHERE user_id = ?',
+      [user_id]
+    );
+    
+    if (settings.length > 0 && settings[0].email_enabled) {
+      const categoryEmailEnabled = settings[0][`email_${category}`];
+      if (categoryEmailEnabled) {
+        // Buscar e-mail do usuário
+        const [user] = await pool.query('SELECT email FROM users WHERE id = ?', [user_id]);
+        if (user.length > 0 && user[0].email) {
+          try {
+            await emailService.sendNotificationEmail(user[0].email, title, message, type);
+          } catch (emailError) {
+            console.error('❌ Erro ao enviar e-mail de notificação:', emailError);
+          }
+        }
+      }
+    }
+    
+    console.log(`✅ Notificação criada para usuário ${user_id}: ${title}`);
+    res.json(notification[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar notificação:', error);
+    res.status(500).json({ error: 'Erro ao criar notificação', message: error.message });
+  }
+});
+
+// PUT - Marcar notificação como lida
+app.put('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pool.query(
+      'UPDATE notifications SET is_read = TRUE, read_at = NOW() WHERE id = ?',
+      [id]
+    );
+    
+    const [notification] = await pool.query('SELECT * FROM notifications WHERE id = ?', [id]);
+    res.json(notification[0]);
+  } catch (error) {
+    console.error('❌ Erro ao marcar notificação como lida:', error);
+    res.status(500).json({ error: 'Erro ao marcar notificação', message: error.message });
+  }
+});
+
+// PUT - Marcar todas as notificações como lidas
+app.put('/api/notifications/read-all', async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    
+    await pool.query(
+      'UPDATE notifications SET is_read = TRUE, read_at = NOW() WHERE user_id = ? AND is_read = FALSE',
+      [user_id]
+    );
+    
+    res.json({ message: 'Todas as notificações foram marcadas como lidas' });
+  } catch (error) {
+    console.error('❌ Erro ao marcar todas as notificações:', error);
+    res.status(500).json({ error: 'Erro ao marcar notificações', message: error.message });
+  }
+});
+
+// DELETE - Excluir notificação
+app.delete('/api/notifications/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pool.query('DELETE FROM notifications WHERE id = ?', [id]);
+    res.json({ message: 'Notificação excluída com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao excluir notificação:', error);
+    res.status(500).json({ error: 'Erro ao excluir notificação', message: error.message });
+  }
+});
+
+// GET - Buscar configurações de notificação do usuário
+app.get('/api/notification-settings/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    let [settings] = await pool.query(
+      'SELECT * FROM notification_settings WHERE user_id = ?',
+      [user_id]
+    );
+    
+    // Se não existir, criar configuração padrão
+    if (settings.length === 0) {
+      await pool.query(
+        'INSERT INTO notification_settings (user_id) VALUES (?)',
+        [user_id]
+      );
+      [settings] = await pool.query(
+        'SELECT * FROM notification_settings WHERE user_id = ?',
+        [user_id]
+      );
+    }
+    
+    res.json(settings[0]);
+  } catch (error) {
+    console.error('❌ Erro ao buscar configurações:', error);
+    res.status(500).json({ error: 'Erro ao buscar configurações', message: error.message });
+  }
+});
+
+// PUT - Atualizar configurações de notificação
+app.put('/api/notification-settings/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const settings = req.body;
+    
+    const fields = [];
+    const values = [];
+    
+    Object.keys(settings).forEach(key => {
+      if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && key !== 'updated_at') {
+        fields.push(`${key} = ?`);
+        values.push(settings[key]);
+      }
+    });
+    
+    values.push(user_id);
+    
+    await pool.query(
+      `UPDATE notification_settings SET ${fields.join(', ')} WHERE user_id = ?`,
+      values
+    );
+    
+    const [updated] = await pool.query(
+      'SELECT * FROM notification_settings WHERE user_id = ?',
+      [user_id]
+    );
+    
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar configurações:', error);
+    res.status(500).json({ error: 'Erro ao atualizar configurações', message: error.message });
+  }
+});
+
+// ==================== FIM DAS ROTAS ====================
+
+
