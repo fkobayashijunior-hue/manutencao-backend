@@ -690,7 +690,7 @@ app.put('/api/notifications/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query(
-      'UPDATE notifications SET read = true WHERE id = ?',
+      'UPDATE notifications SET is_read = TRUE, read_at = NOW() WHERE id = ?',
       [id]
     );
     const [updated] = await pool.query('SELECT * FROM notifications WHERE id = ?', [id]);
