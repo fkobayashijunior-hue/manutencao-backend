@@ -2,10 +2,12 @@ const nodemailer = require('nodemailer');
 
 // Configuração do transportador de e-mail
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
+  port: parseInt(process.env.EMAIL_PORT || '465'),
+  secure: true, // true para porta 465, false para outras portas
   auth: {
-    user: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com',
-    pass: process.env.EMAIL_PASS || 'igiu addb lzul fdhe'
+    user: process.env.EMAIL_USER || 'sistema@azaconnect.com.br',
+    pass: process.env.EMAIL_PASS || 'Fkob*jr14'
   }
 });
 
@@ -35,7 +37,7 @@ const sendNewRequestEmail = async (request, mechanics) => {
     const mailOptions = {
       from: {
         name: 'Aza Connect - Sistema de Manutenção',
-        address: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com'
+        address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
       to: mechanicEmails.join(', '),
       subject: `🔧 Nova Solicitação de Manutenção - ${request.urgency || 'Normal'}`,
@@ -126,7 +128,7 @@ const sendCompletedRequestEmail = async (request, user) => {
     const mailOptions = {
       from: {
         name: 'Aza Connect - Sistema de Manutenção',
-        address: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com'
+        address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
       to: user.email,
       subject: `✅ Solicitação de Manutenção Concluída - ${request.equipment}`,
@@ -208,7 +210,7 @@ const sendNewPartsRequestEmail = async (partsRequest, managers) => {
     const mailOptions = {
       from: {
         name: 'Aza Connect - Sistema de Manutenção',
-        address: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com'
+        address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
       to: managerEmails.join(', '),
       subject: `📦 Nova Solicitação de Peça - ${partsRequest.part_name || 'Peça'}`,
@@ -304,7 +306,7 @@ const sendNotificationEmail = async (email, title, message, type = 'info') => {
     const mailOptions = {
       from: {
         name: 'Aza Connect - Sistema de Manutenção',
-        address: process.env.EMAIL_USER || 'fkobayashijunior@gmail.com'
+        address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
       to: email,
       subject: `${colorConfig.icon} ${title}`,
