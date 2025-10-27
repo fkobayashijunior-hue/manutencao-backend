@@ -87,7 +87,7 @@ const sendNewRequestEmail = async (request, mechanics) => {
               </div>
 
               <p style="text-align: center;">
-                <a href="https://azaconnect-ktjugg.manus.space" class="button">
+                <a href="https://azaconnect.com.br" class="button">
                   Acessar Sistema
                 </a>
               </p>
@@ -165,7 +165,7 @@ const sendCompletedRequestEmail = async (request, user) => {
               </div>
 
               <p style="text-align: center;">
-                <a href="https://azaconnect-ktjugg.manus.space" class="button">
+                <a href="https://azaconnect.com.br" class="button">
                   Ver Detalhes no Sistema
                 </a>
               </p>
@@ -248,7 +248,7 @@ const sendNewPartsRequestEmail = async (partsRequest, managers) => {
               </div>
 
               <p style="text-align: center;">
-                <a href="https://azaconnect-ktjugg.manus.space" class="button">
+                <a href="https://azaconnect.com.br" class="button">
                   Acessar Sistema
                 </a>
               </p>
@@ -335,7 +335,7 @@ const sendNotificationEmail = async (email, title, message, type = 'info') => {
               </div>
 
               <p style="text-align: center;">
-                <a href="https://azaconnect.com.br/dist/" class="button">
+                <a href="https://azaconnect.com.br" class="button">
                   Acessar Sistema
                 </a>
               </p>
