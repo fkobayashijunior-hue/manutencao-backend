@@ -331,7 +331,7 @@ app.post('/api/requests', async (req, res) => {
     // Enviar e-mail para mecânicos
     try {
       const [mechanics] = await pool.query(
-        "SELECT * FROM users WHERE role IN ('Mecânico', 'Mecânico Encarregado') AND active = true"
+        "SELECT * FROM users WHERE role IN ('Mecânico', 'Mecânico Encarregado')"
       );
       if (mechanics.length > 0) {
         await emailService.sendNewRequestEmail(inserted[0], mechanics);
