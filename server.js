@@ -261,10 +261,14 @@ app.get('/api/assets', async (req, res) => {
 // POST - Criar novo equipamento
 app.post('/api/assets', async (req, res) => {
   try {
-    const { name, type, number, model, serial_number, sector, status } = req.body;
+    const { name, type, number, model, serial_number, sector, status, brand, year, photos } = req.body;
+    
+    // Converter photos array para JSON string
+    const photosJson = photos ? JSON.stringify(photos) : null;
+    
     const [result] = await pool.query(
-      'INSERT INTO assets (name, type, number, model, serial_number, sector, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, type, number, model, serial_number, sector, status || 'Ativo']
+      'INSERT INTO assets (name, type, number, model, serial_number, sector, status, brand, year, photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, type, number, model, serial_number, sector, status || 'Ativo', brand, year, photosJson]
     );
     const [inserted] = await pool.query('SELECT * FROM assets WHERE id = ?', [result.insertId]);
     res.status(201).json(inserted[0]);
@@ -278,10 +282,14 @@ app.post('/api/assets', async (req, res) => {
 app.put('/api/assets/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, type, number, model, serial_number, sector, status } = req.body;
+    const { name, type, number, model, serial_number, sector, status, brand, year, photos } = req.body;
+    
+    // Converter photos array para JSON string
+    const photosJson = photos ? JSON.stringify(photos) : null;
+    
     await pool.query(
-      'UPDATE assets SET name = ?, type = ?, number = ?, model = ?, serial_number = ?, sector = ?, status = ? WHERE id = ?',
-      [name, type, number, model, serial_number, sector, status, id]
+      'UPDATE assets SET name = ?, type = ?, number = ?, model = ?, serial_number = ?, sector = ?, status = ?, brand = ?, year = ?, photos = ? WHERE id = ?',
+      [name, type, number, model, serial_number, sector, status, brand, year, photosJson, id]
     );
     const [updated] = await pool.query('SELECT * FROM assets WHERE id = ?', [id]);
     res.json(updated[0]);
