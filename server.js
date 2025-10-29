@@ -251,7 +251,14 @@ app.delete('/api/sectors/:id', async (req, res) => {
 app.get('/api/assets', async (req, res) => {
   try {
     const [result] = await pool.query('SELECT * FROM assets ORDER BY id');
-    res.json(result);
+    
+    // Parse photos JSON para array
+    const assetsWithPhotos = result.map(asset => ({
+      ...asset,
+      photos: asset.photos ? JSON.parse(asset.photos) : []
+    }));
+    
+    res.json(assetsWithPhotos);
   } catch (error) {
     console.error('❌ Erro ao listar equipamentos:', error);
     res.status(500).json({ error: 'Erro ao listar equipamentos', message: error.message });
@@ -271,7 +278,14 @@ app.post('/api/assets', async (req, res) => {
       [name, type, number, model, serial_number, sector, status || 'Ativo', brand, year, photosJson]
     );
     const [inserted] = await pool.query('SELECT * FROM assets WHERE id = ?', [result.insertId]);
-    res.status(201).json(inserted[0]);
+    const asset = inserted[0];
+    
+    // Parse photos JSON para array
+    if (asset.photos) {
+      asset.photos = JSON.parse(asset.photos);
+    }
+    
+    res.status(201).json(asset);
   } catch (error) {
     console.error('❌ Erro ao criar equipamento:', error);
     res.status(500).json({ error: 'Erro ao criar equipamento', message: error.message });
@@ -292,7 +306,14 @@ app.put('/api/assets/:id', async (req, res) => {
       [name, type, number, model, serial_number, sector, status, brand, year, photosJson, id]
     );
     const [updated] = await pool.query('SELECT * FROM assets WHERE id = ?', [id]);
-    res.json(updated[0]);
+    const asset = updated[0];
+    
+    // Parse photos JSON para array
+    if (asset.photos) {
+      asset.photos = JSON.parse(asset.photos);
+    }
+    
+    res.json(asset);
   } catch (error) {
     console.error('❌ Erro ao atualizar equipamento:', error);
     res.status(500).json({ error: 'Erro ao atualizar equipamento', message: error.message });
