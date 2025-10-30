@@ -2026,5 +2026,572 @@ app.put('/api/notification-settings/:user_id', async (req, res) => {
 });
 
 // ==================== FIM DAS ROTAS ====================
+// ==================== ESTOQUE - MATERIAIS ====================
+
+// GET - Listar todos os materiais
+app.get('/api/materials', async (req, res) => {
+  try {
+    const [result] = await pool.query(`
+      SELECT 
+        m.*,
+        CASE 
+          WHEN m.current_stock = 0 THEN 'CRITICO'
+          WHEN m.current_stock < m.minimum_stock THEN 'BAIXO'
+          ELSE 'NORMAL'
+        END AS alert_status,
+        (m.current_stock * m.average_cost) AS total_value,
+        (m.minimum_stock - m.current_stock) AS quantity_to_buy
+      FROM materials m
+      WHERE m.active = TRUE
+      ORDER BY m.category, m.name
+    `);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar materiais:', error);
+    res.status(500).json({ error: 'Erro ao listar materiais', message: error.message });
+  }
+});
+
+// GET - Buscar material por ID
+app.get('/api/materials/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query(`
+      SELECT 
+        m.*,
+        CASE 
+          WHEN m.current_stock = 0 THEN 'CRITICO'
+          WHEN m.current_stock < m.minimum_stock THEN 'BAIXO'
+          ELSE 'NORMAL'
+        END AS alert_status
+      FROM materials m
+      WHERE m.id = ?
+    `, [id]);
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Material não encontrado' });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    console.error('❌ Erro ao buscar material:', error);
+    res.status(500).json({ error: 'Erro ao buscar material', message: error.message });
+  }
+});
+
+// POST - Criar novo material
+app.post('/api/materials', async (req, res) => {
+  try {
+    const { 
+      code, name, description, color, category, unit, 
+      minimum_stock, current_stock, average_cost, location, supplier, photo_url 
+    } = req.body;
+    
+    const [result] = await pool.query(
+      `INSERT INTO materials 
+      (code, name, description, color, category, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [code, name, description, color, category, unit, minimum_stock || 0, current_stock || 0, average_cost || 0, location, supplier, photo_url]
+    );
+    
+    const [inserted] = await pool.query('SELECT * FROM materials WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar material:', error);
+    res.status(500).json({ error: 'Erro ao criar material', message: error.message });
+  }
+});
+
+// PUT - Atualizar material
+app.put('/api/materials/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      code, name, description, color, category, unit, 
+      minimum_stock, current_stock, average_cost, location, supplier, photo_url 
+    } = req.body;
+    
+    await pool.query(
+      `UPDATE materials SET 
+      code = ?, name = ?, description = ?, color = ?, category = ?, unit = ?, 
+      minimum_stock = ?, current_stock = ?, average_cost = ?, location = ?, supplier = ?, photo_url = ?
+      WHERE id = ?`,
+      [code, name, description, color, category, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url, id]
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM materials WHERE id = ?', [id]);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar material:', error);
+    res.status(500).json({ error: 'Erro ao atualizar material', message: error.message });
+  }
+});
+
+// DELETE - Deletar material (soft delete)
+app.delete('/api/materials/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE materials SET active = FALSE WHERE id = ?', [id]);
+    res.json({ message: 'Material deletado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar material:', error);
+    res.status(500).json({ error: 'Erro ao deletar material', message: error.message });
+  }
+});
+
+// ==================== ESTOQUE - MOVIMENTAÇÕES ====================
+
+// GET - Listar movimentações
+app.get('/api/stock-movements', async (req, res) => {
+  try {
+    const { material_id, type, start_date, end_date } = req.query;
+    
+    let query = `
+      SELECT 
+        sm.*,
+        m.code AS material_code,
+        m.name AS material_name,
+        m.category AS material_category,
+        m.unit AS material_unit
+      FROM stock_movements sm
+      INNER JOIN materials m ON sm.material_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (material_id) {
+      query += ' AND sm.material_id = ?';
+      params.push(material_id);
+    }
+    
+    if (type) {
+      query += ' AND sm.type = ?';
+      params.push(type);
+    }
+    
+    if (start_date) {
+      query += ' AND sm.date >= ?';
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ' AND sm.date <= ?';
+      params.push(end_date);
+    }
+    
+    query += ' ORDER BY sm.date DESC, sm.created_at DESC';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar movimentações:', error);
+    res.status(500).json({ error: 'Erro ao listar movimentações', message: error.message });
+  }
+});
+
+// POST - Criar movimentação (entrada/saída)
+app.post('/api/stock-movements', async (req, res) => {
+  try {
+    const { material_id, type, quantity, unit_cost, reason, notes, responsible, date, request_id, maintenance_id } = req.body;
+    
+    // Buscar material atual
+    const [material] = await pool.query('SELECT * FROM materials WHERE id = ?', [material_id]);
+    if (material.length === 0) {
+      return res.status(404).json({ error: 'Material não encontrado' });
+    }
+    
+    const currentStock = parseFloat(material[0].current_stock) || 0;
+    const movementQty = parseFloat(quantity) || 0;
+    
+    // Calcular novo saldo
+    let newBalance;
+    if (type === 'ENTRADA') {
+      newBalance = currentStock + movementQty;
+    } else if (type === 'SAIDA') {
+      newBalance = currentStock - movementQty;
+      if (newBalance < 0) {
+        return res.status(400).json({ error: 'Estoque insuficiente para esta saída' });
+      }
+    } else { // AJUSTE
+      newBalance = movementQty;
+    }
+    
+    // Inserir movimentação
+    const [result] = await pool.query(
+      `INSERT INTO stock_movements 
+      (material_id, type, quantity, unit_cost, balance_after, reason, notes, responsible, date, request_id, maintenance_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [material_id, type, movementQty, unit_cost, newBalance, reason, notes, responsible, date, request_id, maintenance_id]
+    );
+    
+    // Atualizar estoque do material
+    await pool.query('UPDATE materials SET current_stock = ? WHERE id = ?', [newBalance, material_id]);
+    
+    // Atualizar custo médio se for entrada com custo
+    if (type === 'ENTRADA' && unit_cost) {
+      const currentCost = parseFloat(material[0].average_cost) || 0;
+      const newAvgCost = ((currentCost * currentStock) + (unit_cost * movementQty)) / newBalance;
+      await pool.query('UPDATE materials SET average_cost = ? WHERE id = ?', [newAvgCost, material_id]);
+    }
+    
+    const [inserted] = await pool.query('SELECT * FROM stock_movements WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar movimentação:', error);
+    res.status(500).json({ error: 'Erro ao criar movimentação', message: error.message });
+  }
+});
+
+// ==================== ESTOQUE - SOLICITAÇÕES ====================
+
+// GET - Listar solicitações
+app.get('/api/material-requests', async (req, res) => {
+  try {
+    const { status, requester } = req.query;
+    
+    let query = `
+      SELECT 
+        mr.*,
+        m.code AS material_code,
+        m.name AS material_name,
+        m.current_stock AS available_stock,
+        m.unit AS material_unit,
+        CASE 
+          WHEN m.current_stock >= mr.quantity THEN 'DISPONIVEL'
+          WHEN m.current_stock > 0 AND m.current_stock < mr.quantity THEN 'PARCIAL'
+          ELSE 'INDISPONIVEL'
+        END AS availability
+      FROM material_requests mr
+      INNER JOIN materials m ON mr.material_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ' AND mr.status = ?';
+      params.push(status);
+    }
+    
+    if (requester) {
+      query += ' AND mr.requester = ?';
+      params.push(requester);
+    }
+    
+    query += ' ORDER BY mr.created_at DESC';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar solicitações:', error);
+    res.status(500).json({ error: 'Erro ao listar solicitações', message: error.message });
+  }
+});
+
+// POST - Criar solicitação
+app.post('/api/material-requests', async (req, res) => {
+  try {
+    const { material_id, requester, requester_sector, quantity, reason, notes } = req.body;
+    
+    // Verificar se material existe
+    const [material] = await pool.query('SELECT * FROM materials WHERE id = ?', [material_id]);
+    if (material.length === 0) {
+      return res.status(404).json({ error: 'Material não encontrado' });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO material_requests 
+      (material_id, requester, requester_sector, quantity, reason, notes, status) 
+      VALUES (?, ?, ?, ?, ?, ?, 'PENDENTE')`,
+      [material_id, requester, requester_sector, quantity, reason, notes]
+    );
+    
+    const [inserted] = await pool.query('SELECT * FROM material_requests WHERE id = ?', [result.insertId]);
+    
+    // Criar notificação para estoquista/gerente
+    await pool.query(
+      `INSERT INTO notifications (type, title, message, user_id) 
+      SELECT 'material_request', 
+        'Nova Solicitação de Material',
+        CONCAT(?, ' solicitou ', ?, ' ', (SELECT unit FROM materials WHERE id = ?), ' de ', (SELECT name FROM materials WHERE id = ?)),
+        u.id
+      FROM users u 
+      WHERE u.profile IN ('Gestor do Sistema', 'Gerente')`,
+      [requester, quantity, material_id, material_id]
+    );
+    
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar solicitação:', error);
+    res.status(500).json({ error: 'Erro ao criar solicitação', message: error.message });
+  }
+});
+
+// PUT - Atualizar status da solicitação
+app.put('/api/material-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, approved_by, delivered_by, rejection_reason, expected_delivery_date, notes } = req.body;
+    
+    const updates = [];
+    const params = [];
+    
+    if (status) {
+      updates.push('status = ?');
+      params.push(status);
+      
+      if (status === 'APROVADA') {
+        updates.push('approved_by = ?, approved_at = NOW()');
+        params.push(approved_by);
+      } else if (status === 'ENTREGUE') {
+        updates.push('delivered_by = ?, delivered_at = NOW()');
+        params.push(delivered_by);
+        
+        // Criar movimentação de saída
+        const [request] = await pool.query('SELECT * FROM material_requests WHERE id = ?', [id]);
+        if (request.length > 0) {
+          const req_data = request[0];
+          await pool.query(
+            `INSERT INTO stock_movements 
+            (material_id, type, quantity, balance_after, reason, notes, responsible, date, request_id) 
+            SELECT 
+              ?,
+              'SAIDA',
+              ?,
+              (SELECT current_stock FROM materials WHERE id = ?) - ?,
+              'Solicitação atendida',
+              ?,
+              ?,
+              CURDATE(),
+              ?
+            FROM materials WHERE id = ?`,
+            [req_data.material_id, req_data.quantity, req_data.material_id, req_data.quantity, notes, delivered_by, id, req_data.material_id]
+          );
+          
+          // Atualizar estoque
+          await pool.query(
+            'UPDATE materials SET current_stock = current_stock - ? WHERE id = ?',
+            [req_data.quantity, req_data.material_id]
+          );
+        }
+      }
+    }
+    
+    if (rejection_reason) {
+      updates.push('rejection_reason = ?');
+      params.push(rejection_reason);
+    }
+    
+    if (expected_delivery_date) {
+      updates.push('expected_delivery_date = ?');
+      params.push(expected_delivery_date);
+    }
+    
+    if (notes) {
+      updates.push('notes = ?');
+      params.push(notes);
+    }
+    
+    params.push(id);
+    
+    await pool.query(
+      `UPDATE material_requests SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM material_requests WHERE id = ?', [id]);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar solicitação:', error);
+    res.status(500).json({ error: 'Erro ao atualizar solicitação', message: error.message });
+  }
+});
+
+// ==================== ESTOQUE - ALERTAS ====================
+
+// GET - Listar alertas
+app.get('/api/stock-alerts', async (req, res) => {
+  try {
+    const { resolved } = req.query;
+    
+    let query = `
+      SELECT 
+        sa.*,
+        m.code AS material_code,
+        m.name AS material_name,
+        m.current_stock,
+        m.minimum_stock
+      FROM stock_alerts sa
+      INNER JOIN materials m ON sa.material_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (resolved !== undefined) {
+      query += ' AND sa.resolved = ?';
+      params.push(resolved === 'true' || resolved === '1');
+    }
+    
+    query += ' ORDER BY sa.alert_type DESC, sa.created_at DESC';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar alertas:', error);
+    res.status(500).json({ error: 'Erro ao listar alertas', message: error.message });
+  }
+});
+
+// PUT - Marcar alerta como resolvido
+app.put('/api/stock-alerts/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query(
+      'UPDATE stock_alerts SET resolved = TRUE, resolved_at = NOW() WHERE id = ?',
+      [id]
+    );
+    res.json({ message: 'Alerta marcado como resolvido' });
+  } catch (error) {
+    console.error('❌ Erro ao resolver alerta:', error);
+    res.status(500).json({ error: 'Erro ao resolver alerta', message: error.message });
+  }
+});
+
+// ==================== ESTOQUE - CATEGORIAS ====================
+
+// GET - Listar categorias
+app.get('/api/material-categories', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'SELECT * FROM material_categories WHERE active = TRUE ORDER BY name'
+    );
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao listar categorias:', error);
+    res.status(500).json({ error: 'Erro ao listar categorias', message: error.message });
+  }
+});
+
+// POST - Criar categoria
+app.post('/api/material-categories', async (req, res) => {
+  try {
+    const { name, description, code_prefix } = req.body;
+    const [result] = await pool.query(
+      'INSERT INTO material_categories (name, description, code_prefix) VALUES (?, ?, ?)',
+      [name, description, code_prefix]
+    );
+    const [inserted] = await pool.query('SELECT * FROM material_categories WHERE id = ?', [result.insertId]);
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar categoria:', error);
+    res.status(500).json({ error: 'Erro ao criar categoria', message: error.message });
+  }
+});
+
+// ==================== ESTOQUE - RELATÓRIOS ====================
+
+// GET - Relatório de materiais em falta
+app.get('/api/reports/materials-shortage', async (req, res) => {
+  try {
+    const [result] = await pool.query(`
+      SELECT 
+        m.*,
+        (m.minimum_stock - m.current_stock) AS quantity_needed,
+        (m.minimum_stock - m.current_stock) * m.average_cost AS estimated_cost
+      FROM materials m
+      WHERE m.active = TRUE 
+        AND m.current_stock < m.minimum_stock
+      ORDER BY 
+        CASE 
+          WHEN m.current_stock = 0 THEN 1
+          ELSE 2
+        END,
+        m.category, m.name
+    `);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao gerar relatório:', error);
+    res.status(500).json({ error: 'Erro ao gerar relatório', message: error.message });
+  }
+});
+
+// GET - Relatório de consumo por período
+app.get('/api/reports/consumption', async (req, res) => {
+  try {
+    const { start_date, end_date, material_id } = req.query;
+    
+    let query = `
+      SELECT 
+        m.id,
+        m.code,
+        m.name,
+        m.category,
+        m.unit,
+        SUM(CASE WHEN sm.type = 'SAIDA' THEN sm.quantity ELSE 0 END) AS total_output,
+        COUNT(CASE WHEN sm.type = 'SAIDA' THEN 1 END) AS output_count,
+        AVG(CASE WHEN sm.type = 'SAIDA' THEN sm.quantity END) AS avg_output
+      FROM materials m
+      LEFT JOIN stock_movements sm ON m.id = sm.material_id
+      WHERE m.active = TRUE
+    `;
+    const params = [];
+    
+    if (start_date) {
+      query += ' AND sm.date >= ?';
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ' AND sm.date <= ?';
+      params.push(end_date);
+    }
+    
+    if (material_id) {
+      query += ' AND m.id = ?';
+      params.push(material_id);
+    }
+    
+    query += ' GROUP BY m.id, m.code, m.name, m.category, m.unit ORDER BY total_output DESC';
+    
+    const [result] = await pool.query(query, params);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro ao gerar relatório de consumo:', error);
+    res.status(500).json({ error: 'Erro ao gerar relatório', message: error.message });
+  }
+});
+
+// GET - Relatório de valor total do estoque
+app.get('/api/reports/stock-value', async (req, res) => {
+  try {
+    const [result] = await pool.query(`
+      SELECT 
+        m.category,
+        COUNT(*) AS material_count,
+        SUM(m.current_stock) AS total_quantity,
+        SUM(m.current_stock * m.average_cost) AS total_value
+      FROM materials m
+      WHERE m.active = TRUE
+      GROUP BY m.category
+      ORDER BY total_value DESC
+    `);
+    
+    const [total] = await pool.query(`
+      SELECT 
+        COUNT(*) AS total_materials,
+        SUM(m.current_stock * m.average_cost) AS grand_total
+      FROM materials m
+      WHERE m.active = TRUE
+    `);
+    
+    res.json({
+      by_category: result,
+      summary: total[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao gerar relatório de valor:', error);
+    res.status(500).json({ error: 'Erro ao gerar relatório', message: error.message });
+  }
+});
+
 
 
