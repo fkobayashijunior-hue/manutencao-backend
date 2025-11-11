@@ -348,10 +348,11 @@ app.get('/api/requests', async (req, res) => {
 // POST - Criar nova solicitação
 app.post('/api/requests', async (req, res) => {
   try {
-    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
+    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, images } = req.body;
+    const imagesJson = images ? JSON.stringify(images) : null;
     const [result] = await pool.query(
-      'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [equipment, sector, description, urgency, status || 'Pendente', requested_by, assigned_to, service_executed, preventive_maintenance]
+      'INSERT INTO requests (equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [equipment, sector, description, urgency, status || 'Pendente', requested_by, assigned_to, service_executed, preventive_maintenance, imagesJson]
     );
     
     // Buscar registro inserido
@@ -381,10 +382,11 @@ app.post('/api/requests', async (req, res) => {
 app.put('/api/requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance } = req.body;
+    const { equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, images } = req.body;
+    const imagesJson = images ? JSON.stringify(images) : null;
     await pool.query(
-      'UPDATE requests SET equipment = ?, sector = ?, description = ?, urgency = ?, status = ?, requested_by = ?, assigned_to = ?, service_executed = ?, preventive_maintenance = ? WHERE id = ?',
-      [equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, id]
+      'UPDATE requests SET equipment = ?, sector = ?, description = ?, urgency = ?, status = ?, requested_by = ?, assigned_to = ?, service_executed = ?, preventive_maintenance = ?, images = ? WHERE id = ?',
+      [equipment, sector, description, urgency, status, requested_by, assigned_to, service_executed, preventive_maintenance, imagesJson, id]
     );
     
     // Buscar registro atualizado
