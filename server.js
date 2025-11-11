@@ -2595,3 +2595,118 @@ app.get('/api/reports/stock-value', async (req, res) => {
 
 
 
+
+
+// ============================================
+// ROTAS DE SUGESTÕES ANÔNIMAS
+// ============================================
+
+// POST - Criar nova sugestão anônima
+app.post('/api/suggestions', async (req, res) => {
+  try {
+    const { message } = req.body;
+    
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Mensagem não pode estar vazia' });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO suggestions (message, status) VALUES (?, 'pending')`,
+      [message.trim()]
+    );
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Sugestão enviada com sucesso! Obrigado pela sua contribuição.' 
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar sugestão:', error);
+    res.status(500).json({ error: 'Erro ao enviar sugestão', message: error.message });
+  }
+});
+
+// GET - Listar todas as sugestões (apenas para gerentes)
+app.get('/api/suggestions', async (req, res) => {
+  try {
+    const { status } = req.query;
+    
+    let query = 'SELECT * FROM suggestions';
+    const params = [];
+    
+    if (status) {
+      query += ' WHERE status = ?';
+      params.push(status);
+    }
+    
+    query += ' ORDER BY created_at DESC';
+    
+    const [suggestions] = await pool.query(query, params);
+    res.json(suggestions);
+  } catch (error) {
+    console.error('❌ Erro ao listar sugestões:', error);
+    res.status(500).json({ error: 'Erro ao listar sugestões', message: error.message });
+  }
+});
+
+// PUT - Marcar sugestão como lida
+app.put('/api/suggestions/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pool.query(
+      `UPDATE suggestions SET status = 'read', read_at = NOW() WHERE id = ?`,
+      [id]
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM suggestions WHERE id = ?', [id]);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao marcar sugestão como lida:', error);
+    res.status(500).json({ error: 'Erro ao atualizar sugestão', message: error.message });
+  }
+});
+
+// PUT - Arquivar sugestão
+app.put('/api/suggestions/:id/archive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pool.query(
+      `UPDATE suggestions SET status = 'archived' WHERE id = ?`,
+      [id]
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM suggestions WHERE id = ?', [id]);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao arquivar sugestão:', error);
+    res.status(500).json({ error: 'Erro ao arquivar sugestão', message: error.message });
+  }
+});
+
+// DELETE - Deletar sugestão
+app.delete('/api/suggestions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM suggestions WHERE id = ?', [id]);
+    res.json({ message: 'Sugestão deletada com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro ao deletar sugestão:', error);
+    res.status(500).json({ error: 'Erro ao deletar sugestão', message: error.message });
+  }
+});
+
+// GET - Contar sugestões não lidas
+app.get('/api/suggestions/unread-count', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      `SELECT COUNT(*) as count FROM suggestions WHERE status = 'pending'`
+    );
+    res.json({ count: result[0].count });
+  } catch (error) {
+    console.error('❌ Erro ao contar sugestões não lidas:', error);
+    res.status(500).json({ error: 'Erro ao contar sugestões', message: error.message });
+  }
+});
+
+
