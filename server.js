@@ -2083,15 +2083,15 @@ app.get('/api/materials/:id', async (req, res) => {
 app.post('/api/materials', async (req, res) => {
   try {
     const { 
-      code, name, description, color, category, unit, 
+      code, name, description, color, category, sector, batch, unit, 
       minimum_stock, current_stock, average_cost, location, supplier, photo_url 
     } = req.body;
     
     const [result] = await pool.query(
       `INSERT INTO materials 
-      (code, name, description, color, category, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, name, description, color, category, unit, minimum_stock || 0, current_stock || 0, average_cost || 0, location, supplier, photo_url]
+      (code, name, description, color, category, sector, batch, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [code, name, description, color, category, sector, batch, unit, minimum_stock || 0, current_stock || 0, average_cost || 0, location, supplier, photo_url]
     );
     
     const [inserted] = await pool.query('SELECT * FROM materials WHERE id = ?', [result.insertId]);
@@ -2107,16 +2107,16 @@ app.put('/api/materials/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { 
-      code, name, description, color, category, unit, 
+      code, name, description, color, category, sector, batch, unit, 
       minimum_stock, current_stock, average_cost, location, supplier, photo_url 
     } = req.body;
     
     await pool.query(
       `UPDATE materials SET 
-      code = ?, name = ?, description = ?, color = ?, category = ?, unit = ?, 
+      code = ?, name = ?, description = ?, color = ?, category = ?, sector = ?, batch = ?, unit = ?, 
       minimum_stock = ?, current_stock = ?, average_cost = ?, location = ?, supplier = ?, photo_url = ?
       WHERE id = ?`,
-      [code, name, description, color, category, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url, id]
+      [code, name, description, color, category, sector, batch, unit, minimum_stock, current_stock, average_cost, location, supplier, photo_url, id]
     );
     
     const [updated] = await pool.query('SELECT * FROM materials WHERE id = ?', [id]);
