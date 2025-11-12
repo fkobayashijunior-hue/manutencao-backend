@@ -2433,6 +2433,47 @@ app.put('/api/material-requests/:id', async (req, res) => {
   }
 });
 
+// ==================== ESTOQUE - COMENTÁRIOS EM SOLICITAÇÕES ====================
+
+// GET - Listar comentários de uma solicitação
+app.get('/api/material-requests/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [comments] = await pool.query(
+      'SELECT * FROM material_request_comments WHERE request_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+    res.json(comments);
+  } catch (error) {
+    console.error('❌ Erro ao listar comentários:', error);
+    res.status(500).json({ error: 'Erro ao listar comentários', message: error.message });
+  }
+});
+
+// POST - Adicionar comentário em uma solicitação
+app.post('/api/material-requests/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, user_name, comment } = req.body;
+    
+    const [result] = await pool.query(
+      'INSERT INTO material_request_comments (request_id, user_id, user_name, comment) VALUES (?, ?, ?, ?)',
+      [id, user_id, user_name, comment]
+    );
+    
+    // Buscar comentário inserido
+    const [inserted] = await pool.query(
+      'SELECT * FROM material_request_comments WHERE id = ?',
+      [result.insertId]
+    );
+    
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao adicionar comentário:', error);
+    res.status(500).json({ error: 'Erro ao adicionar comentário', message: error.message });
+  }
+});
+
 // ==================== ESTOQUE - ALERTAS ====================
 
 // GET - Listar alertas
