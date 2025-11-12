@@ -68,6 +68,25 @@ const upload = multer({
   }
 });
 
+// Upload em memória para Cloudinary (melhor para Render)
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|pdf/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens (JPEG, JPG, PNG, GIF) e PDFs são permitidos!'));
+    }
+  }
+});
+
 // Log de requisições
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -735,38 +754,44 @@ app.put('/api/notifications/:id/read', async (req, res) => {
 // ==================== UPLOAD DE ARQUIVOS ====================
 
 // POST - Upload de arquivo único
-// Rota de upload para Cloudinary
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+// Rota de upload para Cloudinary (usando memória)
+app.post('/api/upload', uploadMemory.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Upload para Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: 'aza-connect/accessories',
-      resource_type: 'auto'
-    });
-
-    // Deletar arquivo local após upload
-    fs.unlinkSync(req.file.path);
-    
-    res.status(201).json({
-      success: true,
-      file: {
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        url: result.secure_url // URL do Cloudinary
+    // Upload para Cloudinary usando buffer (sem salvar em disco)
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'aza-connect/requests',
+        resource_type: 'auto'
+      },
+      (error, result) => {
+        if (error) {
+          console.error('❌ Erro ao fazer upload no Cloudinary:', error);
+          return res.status(500).json({ error: 'Erro ao fazer upload', message: error.message });
+        }
+        
+        res.status(201).json({
+          success: true,
+          url: result.secure_url,
+          file: {
+            filename: req.file.originalname,
+            originalName: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            url: result.secure_url
+          }
+        });
       }
-    });
+    );
+
+    // Enviar buffer para o stream
+    uploadStream.end(req.file.buffer);
+    
   } catch (error) {
     console.error('❌ Erro ao fazer upload:', error);
-    // Tentar deletar arquivo local em caso de erro
-    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ error: 'Erro ao fazer upload', message: error.message });
   }
 });
