@@ -1598,6 +1598,47 @@ app.delete('/api/accessory-orders/:id', async (req, res) => {
   }
 });
 
+// ========== ACCESSORY ORDER COMMENTS (Comentários do Pedido) ==========
+
+// GET - Listar comentários de um pedido de acessório
+app.get('/api/accessory-orders/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [comments] = await pool.query(
+      'SELECT * FROM accessory_order_comments WHERE order_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+    res.json(comments);
+  } catch (error) {
+    console.error('❌ Erro ao listar comentários:', error);
+    res.status(500).json({ error: 'Erro ao listar comentários', message: error.message });
+  }
+});
+
+// POST - Adicionar comentário em um pedido de acessório
+app.post('/api/accessory-orders/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, user_name, comment } = req.body;
+    
+    const [result] = await pool.query(
+      'INSERT INTO accessory_order_comments (order_id, user_id, user_name, comment) VALUES (?, ?, ?, ?)',
+      [id, user_id, user_name, comment]
+    );
+    
+    // Buscar comentário inserido
+    const [inserted] = await pool.query(
+      'SELECT * FROM accessory_order_comments WHERE id = ?',
+      [result.insertId]
+    );
+    
+    res.status(201).json(inserted[0]);
+  } catch (error) {
+    console.error('❌ Erro ao adicionar comentário:', error);
+    res.status(500).json({ error: 'Erro ao adicionar comentário', message: error.message });
+  }
+});
+
 // ========== ACCESSORY ORDER ITEMS (Itens do Pedido) ==========
 
 // Função auxiliar para atualizar status do pedido baseado nos itens
