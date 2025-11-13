@@ -2860,3 +2860,137 @@ app.get('/api/suggestions/unread-count', async (req, res) => {
 });
 
 
+
+
+// ============================================
+// ROTAS DO MURAL DE RECADOS (BULLETIN BOARD)
+// ============================================
+
+// GET - Listar todos os recados ativos (não expirados)
+app.get('/api/bulletin-board', async (req, res) => {
+  try {
+    const [bulletins] = await pool.query(
+      `SELECT * FROM bulletin_board 
+       WHERE expires_at IS NULL OR expires_at > NOW()
+       ORDER BY is_pinned DESC, created_at DESC`
+    );
+    res.json(bulletins);
+  } catch (error) {
+    console.error('❌ Erro ao buscar recados:', error);
+    res.status(500).json({ error: 'Erro ao buscar recados', message: error.message });
+  }
+});
+
+// GET - Buscar recado específico
+app.get('/api/bulletin-board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [bulletin] = await pool.query('SELECT * FROM bulletin_board WHERE id = ?', [id]);
+    
+    if (bulletin.length === 0) {
+      return res.status(404).json({ error: 'Recado não encontrado' });
+    }
+    
+    res.json(bulletin[0]);
+  } catch (error) {
+    console.error('❌ Erro ao buscar recado:', error);
+    res.status(500).json({ error: 'Erro ao buscar recado', message: error.message });
+  }
+});
+
+// POST - Criar novo recado
+app.post('/api/bulletin-board', async (req, res) => {
+  try {
+    const { title, content, category, color, is_pinned, expires_at, created_by, created_by_name } = req.body;
+    
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios' });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO bulletin_board (title, content, category, color, is_pinned, expires_at, created_by, created_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, content, category || 'Geral', color || 'yellow', is_pinned || false, expires_at || null, created_by, created_by_name]
+    );
+    
+    const [newBulletin] = await pool.query('SELECT * FROM bulletin_board WHERE id = ?', [result.insertId]);
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Recado criado com sucesso!',
+      bulletin: newBulletin[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar recado:', error);
+    res.status(500).json({ error: 'Erro ao criar recado', message: error.message });
+  }
+});
+
+// PUT - Atualizar recado
+app.put('/api/bulletin-board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, category, color, is_pinned, expires_at } = req.body;
+    
+    await pool.query(
+      `UPDATE bulletin_board 
+       SET title = ?, content = ?, category = ?, color = ?, is_pinned = ?, expires_at = ?
+       WHERE id = ?`,
+      [title, content, category, color, is_pinned, expires_at, id]
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM bulletin_board WHERE id = ?', [id]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Recado atualizado com sucesso!',
+      bulletin: updated[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar recado:', error);
+    res.status(500).json({ error: 'Erro ao atualizar recado', message: error.message });
+  }
+});
+
+// DELETE - Deletar recado
+app.delete('/api/bulletin-board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM bulletin_board WHERE id = ?', [id]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Recado deletado com sucesso!' 
+    });
+  } catch (error) {
+    console.error('❌ Erro ao deletar recado:', error);
+    res.status(500).json({ error: 'Erro ao deletar recado', message: error.message });
+  }
+});
+
+// PUT - Fixar/Desafixar recado
+app.put('/api/bulletin-board/:id/pin', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_pinned } = req.body;
+    
+    await pool.query(
+      `UPDATE bulletin_board SET is_pinned = ? WHERE id = ?`,
+      [is_pinned, id]
+    );
+    
+    const [updated] = await pool.query('SELECT * FROM bulletin_board WHERE id = ?', [id]);
+    
+    res.json({ 
+      success: true, 
+      message: is_pinned ? 'Recado fixado!' : 'Recado desafixado!',
+      bulletin: updated[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao fixar/desafixar recado:', error);
+    res.status(500).json({ error: 'Erro ao atualizar recado', message: error.message });
+  }
+});
+
+
+
