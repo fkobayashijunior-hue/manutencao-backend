@@ -2499,7 +2499,7 @@ app.post('/api/material-requests', async (req, res) => {
         CONCAT(?, ' solicitou ', ?, ' ', (SELECT unit FROM materials WHERE id = ?), ' de ', (SELECT name FROM materials WHERE id = ?)),
         u.id
       FROM users u 
-      WHERE u.profile IN ('Gestor do Sistema', 'Gerente')`,
+      WHERE u.role IN ('Gestor do Sistema', 'Gerente')`,
       [requester, quantity, material_id, material_id]
     );
     
