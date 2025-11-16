@@ -7,6 +7,7 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || 'Aza@2025!',
   database: process.env.DB_NAME || 'u629128033_azaconnect',
   port: process.env.DB_PORT || 3306,
+  timezone: '-03:00', // Brasil (GMT-3)
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
