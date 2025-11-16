@@ -117,10 +117,23 @@ app.get('/api/users', async (req, res) => {
   try {
     const [result] = await pool.query('SELECT * FROM users ORDER BY id');
     // Formatar birthdate para YYYY-MM-DD (sem timezone)
-    const users = result.map(user => ({
-      ...user,
-      birthdate: user.birthdate ? new Date(user.birthdate).toISOString().split('T')[0] : null
-    }));
+    const users = result.map(user => {
+      let formattedBirthdate = null;
+      if (user.birthdate) {
+        try {
+          const date = new Date(user.birthdate);
+          if (!isNaN(date.getTime())) {
+            formattedBirthdate = date.toISOString().split('T')[0];
+          }
+        } catch (e) {
+          console.warn(`⚠️ Birthdate inválido para usuário ${user.id}:`, user.birthdate);
+        }
+      }
+      return {
+        ...user,
+        birthdate: formattedBirthdate
+      };
+    });
     res.json(users);
   } catch (error) {
     console.error('❌ Erro ao listar usuários:', error);
