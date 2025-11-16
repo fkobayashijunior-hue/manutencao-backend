@@ -467,7 +467,15 @@ app.post('/api/agulhas', async (req, res) => {
       [tear, size, quantity || 1, employee, date]
     );
     const [inserted] = await pool.query('SELECT * FROM agulhas WHERE id = ?', [result.insertId]);
-    res.status(201).json(inserted[0]);
+    
+    // Formatar data para YYYY-MM-DD antes de retornar
+    const agulha = inserted[0];
+    if (agulha.date) {
+      const d = new Date(agulha.date);
+      agulha.date = d.toISOString().split('T')[0];
+    }
+    
+    res.status(201).json(agulha);
   } catch (error) {
     console.error('❌ Erro ao criar registro de agulha:', error);
     res.status(500).json({ error: 'Erro ao criar registro de agulha', message: error.message });
