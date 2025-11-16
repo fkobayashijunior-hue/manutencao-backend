@@ -735,11 +735,86 @@ app.post('/api/parts-requests/:id/comments', async (req, res) => {
 // GET - Listar todas as permissões
 app.get('/api/permissions', async (req, res) => {
   try {
-    const [result] = await pool.query('SELECT * FROM permissions ORDER BY role');
+    const [result] = await pool.query('SELECT * FROM permissions ORDER BY user_id');
     res.json(result);
   } catch (error) {
     console.error('❌ Erro ao listar permissões:', error);
     res.status(500).json({ error: 'Erro ao listar permissões', message: error.message });
+  }
+});
+
+// GET - Buscar permissões de um usuário específico
+app.get('/api/permissions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [result] = await pool.query('SELECT * FROM permissions WHERE user_id = ?', [userId]);
+    
+    if (result.length === 0) {
+      return res.json({ user_id: userId, permissions: null });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    console.error('❌ Erro ao buscar permissões do usuário:', error);
+    res.status(500).json({ error: 'Erro ao buscar permissões', message: error.message });
+  }
+});
+
+// PUT - Atualizar permissões de um usuário
+app.put('/api/permissions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { permissions } = req.body;
+    
+    if (!permissions) {
+      return res.status(400).json({ error: 'Permissões não fornecidas' });
+    }
+    
+    // Verificar se já existe registro de permissões para este usuário
+    const [existing] = await pool.query('SELECT * FROM permissions WHERE user_id = ?', [userId]);
+    
+    if (existing.length > 0) {
+      // Atualizar permissões existentes
+      await pool.query(
+        'UPDATE permissions SET permissions = ?, updated_at = NOW() WHERE user_id = ?',
+        [JSON.stringify(permissions), userId]
+      );
+    } else {
+      // Criar novo registro de permissões
+      await pool.query(
+        'INSERT INTO permissions (user_id, permissions, updated_at) VALUES (?, ?, NOW())',
+        [userId, JSON.stringify(permissions)]
+      );
+    }
+    
+    // Buscar e retornar permissões atualizadas
+    const [updated] = await pool.query('SELECT * FROM permissions WHERE user_id = ?', [userId]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Permissões atualizadas com sucesso!',
+      permissions: updated[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar permissões:', error);
+    res.status(500).json({ error: 'Erro ao atualizar permissões', message: error.message });
+  }
+});
+
+// DELETE - Resetar permissões de um usuário (volta para padrão do perfil)
+app.delete('/api/permissions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    await pool.query('DELETE FROM permissions WHERE user_id = ?', [userId]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Permissões resetadas para o padrão do perfil!'
+    });
+  } catch (error) {
+    console.error('❌ Erro ao resetar permissões:', error);
+    res.status(500).json({ error: 'Erro ao resetar permissões', message: error.message });
   }
 });
 
