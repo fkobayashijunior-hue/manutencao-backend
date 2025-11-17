@@ -2008,6 +2008,107 @@ app.put('/api/accessory-order-items/:id/receive', async (req, res) => {
   }
 });
 
+// PUT - Editar quantidade aprovada
+app.put('/api/accessory-order-items/:id/edit-quantity', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approved_quantity } = req.body;
+    
+    // Validações
+    if (!approved_quantity || approved_quantity <= 0) {
+      return res.status(400).json({ error: 'Quantidade deve ser maior que zero' });
+    }
+    
+    // Verificar se item existe
+    const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+    
+    const item = existing[0];
+    
+    // Verificar se pode editar (apenas Aprovado ou Comprado)
+    if (item.status !== 'Aprovado' && item.status !== 'Comprado') {
+      return res.status(400).json({ 
+        error: 'Apenas itens "Aprovados" ou "Comprados" podem ter a quantidade editada' 
+      });
+    }
+    
+    // Verificar se não excede quantidade solicitada
+    if (approved_quantity > item.quantity) {
+      return res.status(400).json({ 
+        error: `Quantidade aprovada (${approved_quantity}) não pode exceder quantidade solicitada (${item.quantity})` 
+      });
+    }
+    
+    // Atualizar quantidade aprovada
+    await pool.query(
+      'UPDATE accessory_order_items SET approved_quantity = ? WHERE id = ?',
+      [approved_quantity, id]
+    );
+    
+    // Buscar item atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    
+    console.log(`✅ Quantidade editada: Item ${id} - Nova quantidade: ${approved_quantity}`);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao editar quantidade:', error);
+    res.status(500).json({ error: 'Erro ao editar quantidade', message: error.message });
+  }
+});
+
+// PUT - Desfazer recebimento do item (volta para Comprado)
+app.put('/api/accessory-order-items/:id/undo-receive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar se item existe e está recebido
+    const [existing] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+    
+    const item = existing[0];
+    
+    // Verificar se pode desfazer
+    if (item.status !== 'Recebido' && item.status !== 'Recebido com Problemas') {
+      return res.status(400).json({ 
+        error: 'Apenas itens com status "Recebido" podem ter o recebimento desfeito' 
+      });
+    }
+    
+    // Voltar para status Comprado
+    await pool.query(
+      `UPDATE accessory_order_items 
+       SET status = 'Comprado',
+           quantity_received = 0,
+           received_date = NULL,
+           reception_status = NULL,
+           reception_notes = NULL,
+           received_at = NULL,
+           received_by = NULL
+       WHERE id = ?`,
+      [id]
+    );
+    
+    // Limpar histórico de recebimentos
+    await pool.query('DELETE FROM accessory_receive_history WHERE order_item_id = ?', [id]);
+    
+    // Atualizar status do pedido
+    await updateAccessoryOrderStatus(item.order_id);
+    
+    // Buscar item atualizado
+    const [updated] = await pool.query('SELECT * FROM accessory_order_items WHERE id = ?', [id]);
+    
+    console.log(`✅ Recebimento desfeito: Item ${id} voltou para Comprado`);
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('❌ Erro ao desfazer recebimento:', error);
+    res.status(500).json({ error: 'Erro ao desfazer recebimento', message: error.message });
+  }
+});
+
 // GET - Buscar histórico de recebimentos de um item
 app.get('/api/accessory-order-items/:id/receive-history', async (req, res) => {
   try {
