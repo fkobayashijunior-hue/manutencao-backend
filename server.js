@@ -839,22 +839,23 @@ app.delete('/api/permissions/:userId', async (req, res) => {
   }
 });
 
-// ==================== NOTIFICATIONS ====================
+// ==================== NOTIFICATIONS (DEPRECATED) ====================
+// NOTA: Rotas antigas comentadas - usar as rotas novas na linha ~2139
 
-// GET - Listar notificações de um usuário
-app.get('/api/notifications/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const [result] = await pool.query(
-      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC',
-      [userId]
-    );
-    res.json(result);
-  } catch (error) {
-    console.error('❌ Erro ao listar notificações:', error);
-    res.status(500).json({ error: 'Erro ao listar notificações', message: error.message });
-  }
-});
+// GET - Listar notificações de um usuário (DEPRECATED - usar /api/notifications com query params)
+// app.get('/api/notifications/:userId', async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+//     const [result] = await pool.query(
+//       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC',
+//       [userId]
+//     );
+//     res.json(result);
+//   } catch (error) {
+//     console.error('❌ Erro ao listar notificações:', error);
+//     res.status(500).json({ error: 'Erro ao listar notificações', message: error.message });
+//   }
+// });
 
 // POST - Criar nova notificação
 app.post('/api/notifications', async (req, res) => {
@@ -2140,6 +2141,11 @@ app.get('/api/notifications', async (req, res) => {
   try {
     const { user_id, unread_only } = req.query;
     
+    // Validar user_id
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' });
+    }
+    
     let query = 'SELECT * FROM notifications WHERE user_id = ?';
     const params = [user_id];
     
@@ -2150,10 +2156,11 @@ app.get('/api/notifications', async (req, res) => {
     query += ' ORDER BY created_at DESC LIMIT 100';
     
     const [notifications] = await pool.query(query, params);
-    res.json(notifications);
+    res.json(notifications || []);
   } catch (error) {
     console.error('❌ Erro ao buscar notificações:', error);
-    res.status(500).json({ error: 'Erro ao buscar notificações', message: error.message });
+    // Retornar array vazio em caso de erro para não quebrar frontend
+    res.status(500).json({ error: 'Erro ao buscar notificações', message: error.message, notifications: [] });
   }
 });
 
@@ -2162,15 +2169,21 @@ app.get('/api/notifications/unread-count', async (req, res) => {
   try {
     const { user_id } = req.query;
     
+    // Validar user_id
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório', count: 0 });
+    }
+    
     const [result] = await pool.query(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
       [user_id]
     );
     
-    res.json({ count: result[0].count });
+    res.json({ count: result[0]?.count || 0 });
   } catch (error) {
     console.error('❌ Erro ao contar notificações:', error);
-    res.status(500).json({ error: 'Erro ao contar notificações', message: error.message });
+    // Retornar 0 em caso de erro para não quebrar frontend
+    res.status(500).json({ error: 'Erro ao contar notificações', message: error.message, count: 0 });
   }
 });
 
