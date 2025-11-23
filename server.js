@@ -2134,6 +2134,11 @@ app.get('/api/accessory-order-items/:id/receive-history', async (req, res) => {
 
 
 
+// ==================== ETIQUETAS ZEBRA ====================
+const etiquetasRoutes = require('./etiquetas-routes');
+app.use('/api/etiquetas', etiquetasRoutes);
+
+
 // ==================== NOTIFICATIONS ====================
 
 // GET - Listar notificações do usuário
