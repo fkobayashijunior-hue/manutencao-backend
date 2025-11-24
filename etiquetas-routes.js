@@ -154,24 +154,51 @@ async function parsePDF(filePath) {
  * Gerar código ZPL para uma etiqueta
  */
 function gerarZPL(etiqueta) {
+  // Etiqueta 10x10cm = 800x800 dots a 203 DPI
   return `^XA
-^FO50,30^A0N,25,25^FD${etiqueta.empresa || ''}^FS
-^FO50,60^A0N,25,25^FD${etiqueta.razao_social || ''}^FS
+^PW800
+^LL800
 
-^FO50,100^A0N,30,30^FDPedido - ${etiqueta.pedido || ''}^FS
-^FO400,100^A0N,30,30^FDVol. ped.${etiqueta.volume || ''}^FS
+~TA000
+~JSN
+^LT0
+^MNW
+^MTT
+^PON
+^PMN
+^LH0,0
+^JMA
+^PR4,4
+~SD15
+^JUS
+^LRN
+^CI27
+^PA0,1,1,0
+^XZ
 
-^FO50,150^A0N,35,35^FD${etiqueta.cor || ''}^FS
-^FO400,140^A0N,25,25^FDUNICO^FS
-^FO400,165^A0N,30,30^FD${etiqueta.unico || ''}^FS
+^XA
+^MMT
+^PW800
+^LL800
+^LS0
 
-^FO50,200^A0N,30,30^FD${etiqueta.composicao || ''}^FS
-^FO400,200^A0N,30,30^FDQtd.${etiqueta.quantidade || ''}^FS
+^FO30,20^A0N,20,20^FD${etiqueta.empresa || ''}^FS
+^FO30,45^A0N,20,20^FD${etiqueta.razao_social || ''}^FS
 
-^FO50,240^A0N,30,30^FDPack - ${etiqueta.pack || ''}^FS
-^FO400,240^A0N,30,30^FD${etiqueta.tipo || ''}^FS
+^FO30,90^A0N,25,25^FDPedido - ${etiqueta.pedido || ''}^FS
+^FO550,90^A0N,25,25^FDVol. ped.${etiqueta.volume || ''}^FS
 
-^FO150,300^BY3^BCN,100,Y,N,N
+^FO350,140^A0N,20,20^FDUNICO^FS
+^FO30,160^A0N,35,35^FD${etiqueta.cor || ''}^FS
+^FO350,160^A0N,30,30^FD${etiqueta.unico || ''}^FS
+
+^FO30,220^A0N,30,30^FD${etiqueta.composicao || ''}^FS
+^FO550,220^A0N,30,30^FDQtd.${etiqueta.quantidade || ''}^FS
+
+^FO30,270^A0N,30,30^FDPack - ${etiqueta.pack || ''}^FS
+^FO550,270^A0N,30,30^FD${etiqueta.tipo || ''}^FS
+
+^FO150,400^BY5^BCN,200,Y,N,N
 ^FD${etiqueta.codigo_barras || ''}^FS
 
 ^XZ`;
@@ -357,4 +384,3 @@ router.post('/exportar', async (req, res) => {
 });
 
 module.exports = router;
-
