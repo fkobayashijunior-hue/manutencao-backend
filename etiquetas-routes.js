@@ -155,6 +155,7 @@ async function parsePDF(filePath) {
  */
 function gerarZPL(etiqueta) {
   // Etiqueta 10x10cm = 800x800 dots a 203 DPI
+  console.log('[DEBUG] gerarZPL v2.0 - Template 10x10cm com BY5 e BCN,200');
   return `^XA
 ^PW800
 ^LL800
