@@ -2138,6 +2138,10 @@ app.get('/api/accessory-order-items/:id/receive-history', async (req, res) => {
 const etiquetasRoutes = require('./etiquetas-routes');
 app.use('/api/etiquetas', etiquetasRoutes);
 
+// ==================== ASSINATURAS E CONFIRMAÇÕES ====================
+const signaturesRoutes = require('./signatures-routes');
+app.use('/api/signatures', signaturesRoutes(pool));
+
 
 // ==================== NOTIFICATIONS ====================
 
