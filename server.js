@@ -651,20 +651,29 @@ app.post('/api/parts-requests', async (req, res) => {
     
     // Enviar e-mail específico para Cláudia
     try {
-      const { sendPartsOrderEmail } = require('./emailService-accessory');
-      const orderData = {
-        order_number: `PEC-${result.insertId}`,
-        sector_name: sector,
-        created_at: new Date(),
-        observations: notes
-      };
-      const items = [{
-        code: '-',
-        description: part_name,
-        quantity: quantity || 1,
-        unit: 'UN'
-      }];
-      await sendPartsOrderEmail(orderData, items, requested_by);
+      // Buscar e-mail da Cláudia do banco de dados
+      const [claudia] = await pool.query(
+        "SELECT email FROM users WHERE name LIKE '%Cláudia%' OR name LIKE '%Claudia%' LIMIT 1"
+      );
+      
+      if (claudia.length > 0 && claudia[0].email) {
+        const { sendPartsOrderEmail } = require('./emailService-accessory');
+        const orderData = {
+          order_number: `PEC-${result.insertId}`,
+          sector_name: sector,
+          created_at: new Date(),
+          observations: notes
+        };
+        const items = [{
+          code: '-',
+          description: part_name,
+          quantity: quantity || 1,
+          unit: 'UN'
+        }];
+        await sendPartsOrderEmail(orderData, items, requested_by, claudia[0].email);
+      } else {
+        console.warn('⚠️ Cláudia não encontrada ou sem e-mail cadastrado');
+      }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail para Cláudia (pedido criado com sucesso):', emailError);
     }
@@ -1654,8 +1663,17 @@ app.post('/api/accessory-orders', async (req, res) => {
     
     // Enviar e-mail para Cláudia (gerente)
     try {
-      const { sendAccessoryOrderEmail } = require('./emailService-accessory');
-      await sendAccessoryOrderEmail(newOrder[0], orderItems, requesterName || 'Usuário');
+      // Buscar e-mail da Cláudia do banco de dados
+      const [claudia] = await pool.query(
+        "SELECT email FROM users WHERE name LIKE '%Cláudia%' OR name LIKE '%Claudia%' LIMIT 1"
+      );
+      
+      if (claudia.length > 0 && claudia[0].email) {
+        const { sendAccessoryOrderEmail } = require('./emailService-accessory');
+        await sendAccessoryOrderEmail(newOrder[0], orderItems, requesterName || 'Usuário', claudia[0].email);
+      } else {
+        console.warn('⚠️ Cláudia não encontrada ou sem e-mail cadastrado');
+      }
     } catch (emailError) {
       console.error('⚠️ Erro ao enviar e-mail (pedido criado com sucesso):', emailError);
     }

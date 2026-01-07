@@ -14,10 +14,13 @@ const transporter = nodemailer.createTransport({
 /**
  * Enviar e-mail de novo pedido de acessórios para Cláudia
  */
-const sendAccessoryOrderEmail = async (order, items, requesterName) => {
+const sendAccessoryOrderEmail = async (order, items, requesterName, managerEmail) => {
   try {
-    // E-mail da Cláudia (gerente)
-    const claudiaEmail = 'claudia@azatextil.com.br'; // AJUSTAR COM E-MAIL CORRETO
+    // Validar e-mail do gerente
+    if (!managerEmail || !managerEmail.includes('@')) {
+      console.warn('⚠️ E-mail do gerente não informado ou inválido');
+      return;
+    }
 
     // Montar lista de itens
     const itemsList = items.map(item => `
@@ -34,7 +37,7 @@ const sendAccessoryOrderEmail = async (order, items, requesterName) => {
         name: 'Aza Connect - Sistema de Manutenção',
         address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
-      to: claudiaEmail,
+      to: managerEmail,
       subject: `📦 Novo Pedido de Acessórios - ${order.order_number}`,
       html: `
         <!DOCTYPE html>
@@ -123,10 +126,13 @@ const sendAccessoryOrderEmail = async (order, items, requesterName) => {
 /**
  * Enviar e-mail de novo pedido de peças para Cláudia
  */
-const sendPartsOrderEmail = async (order, items, requesterName) => {
+const sendPartsOrderEmail = async (order, items, requesterName, managerEmail) => {
   try {
-    // E-mail da Cláudia (gerente)
-    const claudiaEmail = 'claudia@azatextil.com.br'; // AJUSTAR COM E-MAIL CORRETO
+    // Validar e-mail do gerente
+    if (!managerEmail || !managerEmail.includes('@')) {
+      console.warn('⚠️ E-mail do gerente não informado ou inválido');
+      return;
+    }
 
     // Montar lista de itens
     const itemsList = items.map(item => `
@@ -143,7 +149,7 @@ const sendPartsOrderEmail = async (order, items, requesterName) => {
         name: 'Aza Connect - Sistema de Manutenção',
         address: process.env.EMAIL_FROM || 'sistema@azaconnect.com.br'
       },
-      to: claudiaEmail,
+      to: managerEmail,
       subject: `🔩 Novo Pedido de Peças - ${order.order_number}`,
       html: `
         <!DOCTYPE html>
