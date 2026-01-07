@@ -1468,24 +1468,42 @@ app.put('/api/accessories/:id', async (req, res) => {
 app.delete('/api/accessories/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('🗑️ Tentando excluir acessório ID:', id);
     
     // Verificar se acessório existe
-    const [existing] = await pool.query('SELECT id FROM accessories WHERE id = ?', [id]);
+    const [existing] = await pool.query('SELECT * FROM accessories WHERE id = ?', [id]);
     if (existing.length === 0) {
+      console.log('❌ Acessório não encontrado:', id);
       return res.status(404).json({ error: 'Acessório não encontrado' });
     }
+    console.log('✅ Acessório encontrado:', existing[0]);
+    
+    // Verificar pedidos que usam este acessório
+    const [orders] = await pool.query('SELECT * FROM accessory_order_items WHERE accessory_id = ?', [id]);
+    console.log('📦 Pedidos encontrados:', orders.length);
     
     // Atualizar pedidos que usam este acessório (setar accessory_id como NULL)
-    await pool.query('UPDATE accessory_order_items SET accessory_id = NULL WHERE accessory_id = ?', [id]);
+    if (orders.length > 0) {
+      console.log('🔄 Atualizando', orders.length, 'pedidos...');
+      const result = await pool.query('UPDATE accessory_order_items SET accessory_id = NULL WHERE accessory_id = ?', [id]);
+      console.log('✅ Pedidos atualizados:', result[0].affectedRows);
+    }
     
     // Excluir acessório
-    await pool.query('DELETE FROM accessories WHERE id = ?', [id]);
+    console.log('🗑️ Excluindo acessório...');
+    const deleteResult = await pool.query('DELETE FROM accessories WHERE id = ?', [id]);
+    console.log('✅ Acessório excluído:', deleteResult[0].affectedRows, 'linha(s)');
     
-    console.log('✅ Acessório excluído:', id);
     res.json({ message: 'Acessório excluído com sucesso' });
   } catch (error) {
     console.error('❌ Erro ao excluir acessório:', error);
-    res.status(500).json({ error: 'Erro ao excluir acessório', message: error.message });
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ 
+      error: 'Erro ao excluir acessório', 
+      message: error.message,
+      code: error.code,
+      sqlMessage: error.sqlMessage 
+    });
   }
 });
 
