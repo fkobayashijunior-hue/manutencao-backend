@@ -649,6 +649,26 @@ app.post('/api/parts-requests', async (req, res) => {
       console.error('⚠️ Erro ao enviar e-mail:', emailError);
     }
     
+    // Enviar e-mail específico para Cláudia
+    try {
+      const { sendPartsOrderEmail } = require('./emailService-accessory');
+      const orderData = {
+        order_number: `PEC-${result.insertId}`,
+        sector_name: sector,
+        created_at: new Date(),
+        observations: notes
+      };
+      const items = [{
+        code: '-',
+        description: part_name,
+        quantity: quantity || 1,
+        unit: 'UN'
+      }];
+      await sendPartsOrderEmail(orderData, items, requested_by);
+    } catch (emailError) {
+      console.error('⚠️ Erro ao enviar e-mail para Cláudia (pedido criado com sucesso):', emailError);
+    }
+    
     res.status(201).json(parsedInserted);
   } catch (error) {
     console.error('❌ Erro ao criar solicitação de peça:', error);
@@ -1446,12 +1466,10 @@ app.delete('/api/accessories/:id', async (req, res) => {
       return res.status(404).json({ error: 'Acessório não encontrado' });
     }
     
-    // Verificar se há pedidos com este acessório
-    const [orders] = await pool.query('SELECT id FROM accessory_order_items WHERE accessory_id = ?', [id]);
-    if (orders.length > 0) {
-      return res.status(400).json({ error: 'Não é possível excluir acessório que possui pedidos' });
-    }
+    // Atualizar pedidos que usam este acessório (setar accessory_id como NULL)
+    await pool.query('UPDATE accessory_order_items SET accessory_id = NULL WHERE accessory_id = ?', [id]);
     
+    // Excluir acessório
     await pool.query('DELETE FROM accessories WHERE id = ?', [id]);
     
     console.log('✅ Acessório excluído:', id);
@@ -1633,6 +1651,14 @@ app.post('/api/accessory-orders', async (req, res) => {
     `, [orderId]);
     
     newOrder[0].items = orderItems;
+    
+    // Enviar e-mail para Cláudia (gerente)
+    try {
+      const { sendAccessoryOrderEmail } = require('./emailService-accessory');
+      await sendAccessoryOrderEmail(newOrder[0], orderItems, requesterName || 'Usuário');
+    } catch (emailError) {
+      console.error('⚠️ Erro ao enviar e-mail (pedido criado com sucesso):', emailError);
+    }
     
     console.log('✅ Pedido criado:', orderNumber);
     res.status(201).json(newOrder[0]);
@@ -2183,6 +2209,13 @@ app.get('/api/notifications/unread-count', async (req, res) => {
       return res.status(400).json({ error: 'user_id é obrigatório', count: 0 });
     }
     
+    // Verificar se tabela existe
+    const [tables] = await pool.query("SHOW TABLES LIKE 'notifications'");
+    if (tables.length === 0) {
+      console.warn('⚠️ Tabela notifications não existe');
+      return res.json({ count: 0 });
+    }
+    
     const [result] = await pool.query(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = FALSE',
       [user_id]
@@ -2191,8 +2224,8 @@ app.get('/api/notifications/unread-count', async (req, res) => {
     res.json({ count: result[0]?.count || 0 });
   } catch (error) {
     console.error('❌ Erro ao contar notificações:', error);
-    // Retornar 0 em caso de erro para não quebrar frontend
-    res.status(500).json({ error: 'Erro ao contar notificações', message: error.message, count: 0 });
+    // Retornar 0 em caso de erro para não quebrar frontend (200 OK)
+    res.json({ count: 0 });
   }
 });
 
