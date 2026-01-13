@@ -144,7 +144,7 @@ app.get('/api/users', async (req, res) => {
 // POST - Criar novo usuário
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, username, password, role, sector, birthdate, email, phone } = req.body;
+    const { name, username, password, role, sector, birthdate, email, phone, cpf, admission_date } = req.body;
     
     // Verificar se username já existe
     const [existing] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
@@ -153,8 +153,8 @@ app.post('/api/users', async (req, res) => {
     }
     
     const [result] = await pool.query(
-      'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [name, username, password, role, sector, birthdate, email || null, phone || null]
+      'INSERT INTO users (name, username, password, role, sector, birthdate, email, phone, cpf, admission_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, username, password, role, sector, birthdate, email || null, phone || null, cpf || null, admission_date || null]
     );
     // Buscar registro inserido
     const [inserted] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
@@ -173,10 +173,10 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, username, password, role, sector, birthdate, email, phone } = req.body;
+    const { name, username, password, role, sector, birthdate, email, phone, cpf, admission_date } = req.body;
     await pool.query(
-      'UPDATE users SET name = ?, username = ?, password = ?, role = ?, sector = ?, birthdate = ?, email = ?, phone = ? WHERE id = ?',
-      [name, username, password, role, sector, birthdate, email || null, phone || null, id]
+      'UPDATE users SET name = ?, username = ?, password = ?, role = ?, sector = ?, birthdate = ?, email = ?, phone = ?, cpf = ?, admission_date = ? WHERE id = ?',
+      [name, username, password, role, sector, birthdate, email || null, phone || null, cpf || null, admission_date || null, id]
     );
     // Buscar registro atualizado
     const [updated] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
