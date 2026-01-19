@@ -3282,3 +3282,175 @@ app.put('/api/bulletin-board/:id/pin', async (req, res) => {
 
 
 
+
+// ============================================
+// ROTAS DE ASSINATURAS DO MANUAL DO COLABORADOR
+// ============================================
+
+// POST - Registrar assinatura do manual
+app.post('/api/manual-signatures', async (req, res) => {
+  try {
+    const { user_id, user_name, user_cpf, ip_address, signed_at } = req.body;
+    
+    // Verificar se já assinou
+    const [existing] = await pool.query(
+      'SELECT * FROM manual_signatures WHERE user_id = ?',
+      [user_id]
+    );
+    
+    if (existing.length > 0) {
+      return res.status(400).json({ 
+        error: 'Usuário já assinou o manual',
+        signed_at: existing[0].signed_at
+      });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO manual_signatures (user_id, user_name, user_cpf, ip_address, signed_at) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [user_id, user_name, user_cpf, ip_address, signed_at]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Assinatura registrada com sucesso!',
+      signature_id: result.insertId
+    });
+  } catch (error) {
+    console.error('❌ Erro ao registrar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao registrar assinatura', message: error.message });
+  }
+});
+
+// GET - Listar todas as assinaturas
+app.get('/api/manual-signatures', async (req, res) => {
+  try {
+    const [signatures] = await pool.query(
+      'SELECT * FROM manual_signatures ORDER BY signed_at DESC'
+    );
+    res.json(signatures);
+  } catch (error) {
+    console.error('❌ Erro ao listar assinaturas:', error);
+    res.status(500).json({ error: 'Erro ao listar assinaturas', message: error.message });
+  }
+});
+
+// GET - Verificar se usuário assinou
+app.get('/api/manual-signatures/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [signatures] = await pool.query(
+      'SELECT * FROM manual_signatures WHERE user_id = ?',
+      [userId]
+    );
+    
+    if (signatures.length > 0) {
+      res.json({ signed: true, signature: signatures[0] });
+    } else {
+      res.json({ signed: false });
+    }
+  } catch (error) {
+    console.error('❌ Erro ao verificar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao verificar assinatura', message: error.message });
+  }
+});
+
+// ============================================
+// ROTAS DE VISUALIZAÇÕES DO MURAL DE RECADOS
+// ============================================
+
+// POST - Registrar visualização do mural
+app.post('/api/bulletin-views', async (req, res) => {
+  try {
+    const { user_id, user_name, user_cpf, bulletin_id, ip_address, viewed_at } = req.body;
+    
+    // Verificar se já visualizou hoje
+    const today = new Date().toISOString().split('T')[0];
+    const [existing] = await pool.query(
+      `SELECT * FROM bulletin_views 
+       WHERE user_id = ? AND DATE(viewed_at) = ?`,
+      [user_id, today]
+    );
+    
+    if (existing.length > 0) {
+      return res.json({ 
+        success: true, 
+        message: 'Visualização já registrada hoje',
+        view_id: existing[0].id
+      });
+    }
+    
+    const [result] = await pool.query(
+      `INSERT INTO bulletin_views (user_id, user_name, user_cpf, bulletin_id, ip_address, viewed_at) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [user_id, user_name, user_cpf, bulletin_id, ip_address, viewed_at]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Visualização registrada com sucesso!',
+      view_id: result.insertId
+    });
+  } catch (error) {
+    console.error('❌ Erro ao registrar visualização:', error);
+    res.status(500).json({ error: 'Erro ao registrar visualização', message: error.message });
+  }
+});
+
+// GET - Listar todas as visualizações
+app.get('/api/bulletin-views', async (req, res) => {
+  try {
+    const [views] = await pool.query(
+      'SELECT * FROM bulletin_views ORDER BY viewed_at DESC'
+    );
+    res.json(views);
+  } catch (error) {
+    console.error('❌ Erro ao listar visualizações:', error);
+    res.status(500).json({ error: 'Erro ao listar visualizações', message: error.message });
+  }
+});
+
+// GET - Buscar visualizações de um usuário
+app.get('/api/bulletin-views/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [views] = await pool.query(
+      'SELECT * FROM bulletin_views WHERE user_id = ? ORDER BY viewed_at DESC',
+      [userId]
+    );
+    res.json(views);
+  } catch (error) {
+    console.error('❌ Erro ao buscar visualizações:', error);
+    res.status(500).json({ error: 'Erro ao buscar visualizações', message: error.message });
+  }
+});
+
+// GET - Verificar se usuário visualizou hoje
+app.get('/api/bulletin-views/check/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const [views] = await pool.query(
+      `SELECT * FROM bulletin_views 
+       WHERE user_id = ? AND DATE(viewed_at) = ?`,
+      [userId, today]
+    );
+    
+    res.json({ 
+      viewed_today: views.length > 0,
+      last_view: views.length > 0 ? views[0] : null
+    });
+  } catch (error) {
+    console.error('❌ Erro ao verificar visualização:', error);
+    res.status(500).json({ error: 'Erro ao verificar visualização', message: error.message });
+  }
+});
+
+
+// Iniciar servidor
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`📡 API disponível em: http://localhost:${PORT}`);
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+});
