@@ -1151,6 +1151,40 @@ app.put('/api/preventive-maintenance/schedule/:id', async (req, res) => {
   }
 });
 
+// DELETE - Excluir agendamento de manutenção preventiva
+app.delete('/api/preventive-maintenance/schedule/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar se o agendamento existe
+    const [schedule] = await pool.query(
+      'SELECT * FROM preventive_maintenance_schedule WHERE id = ?',
+      [id]
+    );
+    
+    if (schedule.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+    
+    // Excluir itens do checklist relacionados
+    await pool.query(
+      'DELETE FROM preventive_maintenance_checklist WHERE maintenance_id = ?',
+      [id]
+    );
+    
+    // Excluir agendamento
+    await pool.query(
+      'DELETE FROM preventive_maintenance_schedule WHERE id = ?',
+      [id]
+    );
+    
+    res.json({ message: 'Agendamento excluído com sucesso', id });
+  } catch (error) {
+    console.error('❌ Erro ao excluir agendamento:', error);
+    res.status(500).json({ error: 'Erro ao excluir agendamento', message: error.message });
+  }
+});
+
 // PUT - Atualizar item do checklist
 app.put('/api/preventive-maintenance/checklist/:id', async (req, res) => {
   try {
